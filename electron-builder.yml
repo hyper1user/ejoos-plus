@@ -17,17 +17,7 @@ files:
   - '!**/*.sqlite'
   - '!**/*.docx'
   - '!**/*.pdf'
-asarUnpack:
-  - resources/**
-  - node_modules/exceljs/**
-  - node_modules/archiver/**
-  - node_modules/archiver-utils/**
-  - node_modules/lazystream/**
-  - node_modules/readable-stream/**
-  - node_modules/better-sqlite3/**
-  - node_modules/bindings/**
-  - node_modules/prebuild-install/**
-  - node_modules/node-addon-api/**
+asar: false
 win:
   executableName: ejoos-plus
   icon: build/icon.ico

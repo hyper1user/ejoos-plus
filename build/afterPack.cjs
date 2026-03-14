@@ -3,36 +3,32 @@ const fs = require('fs')
 
 // Fix: lazystream requires readable-stream@2 with passthrough.js at root
 // electron-builder hoists readable-stream@3 which doesn't have passthrough.js
-// This hook creates a shim that re-exports PassThrough from v3 API
+// This hook creates shims that re-export from v3 API
 exports.default = async function afterPack(context) {
   const appOutDir = context.appOutDir
-  const unpackedDir = path.join(appOutDir, 'resources', 'app.asar.unpacked')
-  const readableStreamDir = path.join(unpackedDir, 'node_modules', 'readable-stream')
 
-  if (!fs.existsSync(readableStreamDir)) return
+  // Works for both asar (app.asar.unpacked) and non-asar (app) modes
+  const candidates = [
+    path.join(appOutDir, 'resources', 'app', 'node_modules', 'readable-stream'),
+    path.join(appOutDir, 'resources', 'app.asar.unpacked', 'node_modules', 'readable-stream')
+  ]
 
-  const passthroughPath = path.join(readableStreamDir, 'passthrough.js')
-  if (!fs.existsSync(passthroughPath)) {
-    fs.writeFileSync(
-      passthroughPath,
-      'module.exports = require(".").PassThrough;\n',
-      'utf8'
-    )
-    console.log('[afterPack] Created readable-stream/passthrough.js shim')
-  }
+  for (const readableStreamDir of candidates) {
+    if (!fs.existsSync(readableStreamDir)) continue
 
-  // Also create duplex.js and transform.js shims if missing (archiver may need them)
-  const shimMap = {
-    'duplex.js': 'Duplex',
-    'transform.js': 'Transform',
-    'writable.js': 'Writable'
-  }
+    const shimMap = {
+      'passthrough.js': 'PassThrough',
+      'duplex.js': 'Duplex',
+      'transform.js': 'Transform',
+      'writable.js': 'Writable'
+    }
 
-  for (const [file, cls] of Object.entries(shimMap)) {
-    const filePath = path.join(readableStreamDir, file)
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, `module.exports = require(".").${cls};\n`, 'utf8')
-      console.log(`[afterPack] Created readable-stream/${file} shim`)
+    for (const [file, cls] of Object.entries(shimMap)) {
+      const filePath = path.join(readableStreamDir, file)
+      if (!fs.existsSync(filePath)) {
+        fs.writeFileSync(filePath, `module.exports = require(".").${cls};\n`, 'utf8')
+        console.log(`[afterPack] Created ${file} shim in ${readableStreamDir}`)
+      }
     }
   }
 }
