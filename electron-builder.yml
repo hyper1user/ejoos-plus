@@ -17,7 +17,10 @@ files:
   - '!**/*.sqlite'
   - '!**/*.docx'
   - '!**/*.pdf'
-asar: false
+asar: true
+asarUnpack:
+  - "node_modules/better-sqlite3/**"
+  - "node_modules/bindings/**"
 win:
   executableName: ejoos-plus
   icon: build/icon.ico
