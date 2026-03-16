@@ -11,30 +11,26 @@ interface DelimiterConfig {
   end: string
 }
 
-const DEFAULT_DELIMITERS: DelimiterConfig = { start: '{', end: '}' }
-const ANGLE_DELIMITERS: DelimiterConfig = { start: '<<', end: '>>' }
-
 /**
  * Auto-detect delimiter type by scanning word/document.xml
  * Returns <<>> if found, otherwise default {}
- * Checks both complete tags in single text nodes and split tags across runs
+ *
+ * IMPORTANT: Always returns a NEW object because docxtemplater mutates
+ * the delimiters object in-place (XML-escaping start/end values).
  */
 function detectDelimiters(zip: PizZip): DelimiterConfig {
   try {
     const xmlContent = zip.file('word/document.xml')?.asText() ?? ''
-    // Check for <<TAG>> in a single text node
     if (/&lt;&lt;[\p{L}\w\s]+?&gt;&gt;/u.test(xmlContent) || /<<[\p{L}\w\s]+?>>/u.test(xmlContent)) {
-      return ANGLE_DELIMITERS
+      return { start: '<<', end: '>>' }
     }
-    // Check for split tags: &lt;&lt; in one run, &gt;&gt; in another
-    // Just detect presence of escaped angle brackets as delimiters
     if (/&lt;&lt;/.test(xmlContent) && /&gt;&gt;/.test(xmlContent)) {
-      return ANGLE_DELIMITERS
+      return { start: '<<', end: '>>' }
     }
   } catch {
     // fallback to default
   }
-  return DEFAULT_DELIMITERS
+  return { start: '{', end: '}' }
 }
 
 /**
@@ -53,7 +49,9 @@ export function generateDocx(templatePath: string, data: Record<string, string>)
       return ''
     }
   })
+
   doc.render(data)
+
   return doc.getZip().generate({ type: 'nodebuffer' }) as Buffer
 }
 
@@ -82,7 +80,8 @@ export function getTemplateTags(templatePath: string): string[] {
     const fullText = doc.getFullText()
 
     // Extract tags from the merged full text
-    if (delimiters.start === '<<') {
+    // Note: check original value — docxtemplater mutates delimiters in-place to XML-escaped form
+    if (delimiters.start === '<<' || delimiters.start === '&lt;&lt;') {
       const angleRegex = /<<([\p{L}\w\s+]+?)>>/gu
       let match: RegExpExecArray | null
       while ((match = angleRegex.exec(fullText)) !== null) {
