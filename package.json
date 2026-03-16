@@ -1,6 +1,6 @@
 {
   "name": "ejoos-plus",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "ЕЖООС+ — Система обліку особового складу",
   "main": "./out/main/index.js",
   "author": "12 ОШР",
@@ -9,8 +9,8 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
-    "postinstall": "electron-builder install-app-deps",
-    "build:win": "electron-vite build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --x64",
+    "postinstall": "electron-builder install-app-deps && node build/fix-readable-stream.cjs",
+    "build:win": "node build/fix-readable-stream.cjs && electron-vite build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --x64",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
