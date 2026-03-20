@@ -12,7 +12,7 @@ app.commandLine.appendSwitch('disable-gpu-compositing')
 // Register safe-file:// protocol BEFORE app ready
 // Serves local files (photos, PDFs) to the renderer without exposing file:// directly
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'safe-file', privileges: { secure: true, supportFetchAPI: true } }
+  { scheme: 'safe-file', privileges: { secure: true, bypassCSP: true, supportFetchAPI: true } }
 ])
 
 function createWindow(): void {

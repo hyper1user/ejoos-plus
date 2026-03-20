@@ -171,6 +171,7 @@ export default function PersonnelCard(): JSX.Element {
 
   const effectivePhotoPath = person?.photoPath || scanPhotoPath
 
+
   const handlePhotoClick = async () => {
     if (!person || uploadingPhoto) return
     setUploadingPhoto(true)
