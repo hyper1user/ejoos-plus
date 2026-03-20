@@ -382,9 +382,12 @@ export default function PersonnelCard(): JSX.Element {
           <SectionTitle>Документи</SectionTitle>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <tbody>
-              <InfoRow label="Паспорт" value={[person.idDocType, person.passportSeries || person.idDocSeries, person.passportNumber || person.idDocNumber].filter(Boolean).join(' ') || '—'} />
+              <InfoRow label="Паспорт" value={[person.passportSeries || person.idDocSeries, person.passportNumber || person.idDocNumber].filter(Boolean).join(' ') || '—'} />
               <InfoRow label="Виданий" value={person.passportIssuedBy ? `${person.passportIssuedBy} ${formatDate(person.passportIssuedDate)}` : '—'} />
               <InfoRow label="Військовий квиток" value={[person.militaryIdSeries, person.militaryIdNumber].filter(Boolean).join(' ') || '—'} />
+              {(person.ubdSeries || person.ubdNumber) && (
+                <InfoRow label="УБД" value={[person.ubdSeries, person.ubdNumber].filter(Boolean).join(' ')} />
+              )}
             </tbody>
           </table>
 
@@ -393,10 +396,10 @@ export default function PersonnelCard(): JSX.Element {
             <tbody>
               <InfoRow label="Освіта" value={person.educationLevelName || '—'} />
               <InfoRow label="Заклад" value={person.educationInstitution || '—'} />
-              <InfoRow label="Рік закінч." value={person.educationYear || '—'} />
-              <InfoRow label="Військ. освіта" value={person.militaryEducation || '—'} />
-              <InfoRow label="Місце народж." value={person.birthplace || '—'} />
-              <InfoRow label="Адреса факт." value={person.addressActual || '—'} />
+              <InfoRow label="Рік закінчення" value={person.educationYear || '—'} />
+              <InfoRow label="Військова освіта" value={person.militaryEducation || '—'} />
+              <InfoRow label="Місце народження" value={person.birthplace || '—'} />
+              <InfoRow label="Адреса проживання" value={person.addressActual || '—'} />
               <InfoRow label="Громадянство" value={person.citizenship || '—'} />
               <InfoRow label="Національність" value={person.nationality || '—'} />
             </tbody>
@@ -425,7 +428,6 @@ export default function PersonnelCard(): JSX.Element {
                   <InfoRow label="Ким виданий" value={person.driverLicenseIssuedBy || '—'} />
                   <InfoRow label="Дата видачі" value={formatDate(person.driverLicenseIssuedDate)} />
                   <InfoRow label="Дійсне до" value={formatDate(person.driverLicenseExpiry)} />
-                  <InfoRow label="Стаж (р.)" value={person.driverLicenseExperience !== null ? String(person.driverLicenseExperience) : '—'} />
                 </tbody>
               </table>
             </>
@@ -593,7 +595,7 @@ export default function PersonnelCard(): JSX.Element {
               <SectionTitle>Особисті дані</SectionTitle>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
-                  <InfoRow label="Дата народж." value={formatDate(person.dateOfBirth)} />
+                  <InfoRow label="Дата народження" value={formatDate(person.dateOfBirth)} />
                   <InfoRow
                     label="Стать"
                     value={person.gender === 'ч' ? 'Чоловіча' : person.gender === 'ж' ? 'Жіноча' : '—'}
@@ -613,10 +615,10 @@ export default function PersonnelCard(): JSX.Element {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
                   <InfoRow label="ВОС" value={person.specialtyCode || '—'} />
-                  <InfoRow label="Дата зарах." value={formatDate(person.enrollmentDate)} />
-                  <InfoRow label="Наказ зарах." value={person.enrollmentOrderNum || '—'} />
-                  <InfoRow label="Призваний" value={[person.tccName, formatDate(person.conscriptionDate)].filter(Boolean).join(', ') || '—'} />
-                  {person.serviceType !== 'мобілізація' && (
+                  <InfoRow label="Зарахований до списків в/ч" value={formatDate(person.enrollmentDate)} />
+                  <InfoRow label="Наказ" value={person.enrollmentOrderNum || '—'} />
+                  <InfoRow label="Призваний" value={[person.tccName, formatDate(person.conscriptionDate)].filter(v => v && v !== '—').join(', ') || '—'} />
+                  {person.serviceType !== 'мобілізація' && person.serviceType !== 'мобілізований' && (
                     <InfoRow label="Кінець контр." value={formatDate(person.contractEndDate)} />
                   )}
                 </tbody>
@@ -633,9 +635,19 @@ export default function PersonnelCard(): JSX.Element {
               <tbody>
                 <InfoRow label="Телефон" value={person.phone || '—'} />
                 <InfoRow label="Сімейний стан" value={person.maritalStatus || '—'} />
-                <InfoRow label="Адреса реєстр." value={person.addressRegistered || '—'} />
-                <InfoRow label="Адреса факт." value={person.addressActual || '—'} />
-                <InfoRow label="Родичі" value={person.relativesInfo || '—'} />
+                {person.addressRegistered && person.addressActual && person.addressRegistered.trim().toLowerCase() === person.addressActual.trim().toLowerCase() ? (
+                  <InfoRow label="Адреса проживання та реєстрації" value={person.addressActual} />
+                ) : (
+                  <>
+                    <InfoRow label="Адреса реєстрації" value={person.addressRegistered || '—'} />
+                    <InfoRow label="Адреса проживання" value={person.addressActual || '—'} />
+                  </>
+                )}
+                <InfoRow label="Родичі" value={
+                  person.relativesInfo
+                    ? <span style={{ whiteSpace: 'pre-line' }}>{person.relativesInfo.replace(/;\s*/g, ';\n')}</span>
+                    : '—'
+                } />
               </tbody>
             </table>
           </Card>

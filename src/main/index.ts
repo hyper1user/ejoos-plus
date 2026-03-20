@@ -88,10 +88,18 @@ app.whenReady().then(() => {
     if (!isAllowed) {
       try {
         const db = getDatabase()
-        const photo = db.select({ photoPath: personnel.photoPath }).from(personnel)
-          .where(eq(sql`lower(replace(${personnel.photoPath}, '\\', '/'))`, normalizedResolved))
-          .limit(1).get()
-        if (photo) isAllowed = true
+        const rows = db.select({ photoPath: personnel.photoPath }).from(personnel)
+          .where(sql`${personnel.photoPath} IS NOT NULL AND ${personnel.photoPath} != ''`)
+          .all()
+        for (const row of rows) {
+          if (row.photoPath) {
+            const normalizedPhoto = resolve(normalize(row.photoPath)).replace(/\\/g, '/').toLowerCase()
+            if (normalizedPhoto === normalizedResolved) {
+              isAllowed = true
+              break
+            }
+          }
+        }
       } catch { /* DB not ready */ }
     }
 
