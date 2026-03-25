@@ -551,6 +551,10 @@ function createTables(sqliteDb: InstanceType<typeof Database>): void {
   // у БД створених до v0.4.0 (ці колонки вже включені в CREATE TABLE
   // вище, тому для нових БД ALTER TABLE не спрацює — і це нормально)
   migratePersonnel(sqliteDb)
+
+  // v0.7.1: fix personnel whose active movement is "В розпорядження"
+  // but currentSubdivision was never updated
+  fixDispositionSubdivisions(sqliteDb)
 }
 
 function migratePersonnel(sqliteDb: InstanceType<typeof Database>): void {
@@ -600,5 +604,23 @@ function migratePersonnel(sqliteDb: InstanceType<typeof Database>): void {
   }
   if (migrated > 0) {
     console.log(`[db] Міграція personnel: додано ${migrated} колонок`)
+  }
+}
+
+function fixDispositionSubdivisions(sqliteDb: InstanceType<typeof Database>): void {
+  const fixed = sqliteDb.exec(`
+    UPDATE personnel SET
+      current_subdivision = 'розпорядження',
+      current_position_idx = 'розпоряджен'
+    WHERE id IN (
+      SELECT m.personnel_id FROM movements m
+      WHERE m.is_active = 1
+        AND m.order_type LIKE 'В розпорядження%'
+    )
+    AND current_subdivision != 'розпорядження'
+  `)
+  const changes = sqliteDb.prepare('SELECT changes() as cnt').get() as { cnt: number }
+  if (changes.cnt > 0) {
+    console.log(`[db] fixDispositionSubdivisions: виправлено ${changes.cnt} записів`)
   }
 }

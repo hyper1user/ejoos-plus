@@ -962,7 +962,7 @@ export function registerIpcHandlers(): void {
           .returning()
           .get()
 
-        // Update personnel current position and subdivision if positionIndex provided
+        // Update personnel current position and subdivision
         const personnelUpdates: Record<string, unknown> = {
           updatedAt: sql`datetime('now')`
         }
@@ -986,6 +986,10 @@ export function registerIpcHandlers(): void {
               personnelUpdates.currentSubdivision = sub.code
             }
           }
+        } else if (input.orderType.startsWith('В розпорядження')) {
+          // No specific position — mark as "розпорядження"
+          personnelUpdates.currentPositionIdx = 'розпоряджен'
+          personnelUpdates.currentSubdivision = 'розпорядження'
         }
 
         db.update(personnel)
