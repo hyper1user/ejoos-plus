@@ -24,7 +24,9 @@ import {
   leaveTypes,
   leaveTypeAliases,
   documentTemplates,
-  auditLog
+  auditLog,
+  dgvMarks,
+  dgvMonthMeta
 } from '../db/schema'
 import { eq, and, like, or, asc, desc, sql, gte, lte } from 'drizzle-orm'
 import { personnelCreateSchema, personnelUpdateSchema, positionCreateSchema, positionUpdateSchema, movementCreateSchema, statusHistoryCreateSchema, orderCreateSchema, leaveRecordCreateSchema } from '@shared/validators'
@@ -2584,6 +2586,340 @@ export function registerIpcHandlers(): void {
         limitedFitness
       },
       statusTypes: stTypes.map((s) => ({ code: s.code, name: s.name, groupName: s.groupName }))
+    }
+  })
+
+  // ==================== DGV (Грошове забезпечення) ====================
+
+  // List DGV codes (from shared constants)
+  safeHandle(IPC.DGV_CODES_LIST, () => {
+    const { DGV_CODES } = require('@shared/enums/dgv-codes')
+    return DGV_CODES
+  })
+
+  // Get monthly DGV grid
+  safeHandle(
+    IPC.DGV_GET_MONTH,
+    (_event, year: number, month: number) => {
+      const db = getDatabase()
+      const HOME_SUB = 'Г-3'
+
+      // Date range
+      const mm = String(month).padStart(2, '0')
+      const firstDay = `${year}-${mm}-01`
+      const lastDay = `${year}-${mm}-${new Date(year, month, 0).getDate()}`
+
+      // 1) Active personnel currently in our subdivision
+      const currentRows = db
+        .select({
+          id: personnel.id,
+          fullName: personnel.fullName,
+          rankName: ranks.name,
+          positionTitle: positions.title,
+          ipn: personnel.ipn,
+          currentStatusCode: personnel.currentStatusCode
+        })
+        .from(personnel)
+        .leftJoin(ranks, eq(personnel.rankId, ranks.id))
+        .leftJoin(positions, eq(personnel.currentPositionIdx, positions.positionIndex))
+        .where(and(
+          eq(personnel.status, 'active'),
+          eq(personnel.currentSubdivision, HOME_SUB)
+        ))
+        .orderBy(asc(personnel.currentPositionIdx), asc(personnel.fullName))
+        .all()
+
+      const currentIds = new Set(currentRows.map((p) => p.id))
+
+      // 2) Personnel transferred OUT of our subdivision during this month
+      // Find positions that belong to our subdivision
+      const homePositionIndexes = new Set(
+        db.select({ positionIndex: positions.positionIndex })
+          .from(positions)
+          .innerJoin(subdivisions, eq(positions.subdivisionId, subdivisions.id))
+          .where(eq(subdivisions.code, HOME_SUB))
+          .all()
+          .map((p) => p.positionIndex)
+      )
+
+      // Find movements this month where previousPosition was in our subdivision
+      const transferredOutMovements = db
+        .select({
+          personnelId: movements.personnelId,
+          previousPosition: movements.previousPosition
+        })
+        .from(movements)
+        .where(and(
+          eq(movements.isActive, true),
+          sql`${movements.dateFrom} >= ${firstDay}`,
+          sql`${movements.dateFrom} <= ${lastDay}`
+        ))
+        .all()
+        .filter((m) =>
+          m.previousPosition &&
+          homePositionIndexes.has(m.previousPosition) &&
+          !currentIds.has(m.personnelId)
+        )
+
+      const transferredOutIds = new Set(transferredOutMovements.map((m) => m.personnelId))
+
+      // Fetch transferred-out personnel data
+      const transferredRows = transferredOutIds.size > 0
+        ? db
+            .select({
+              id: personnel.id,
+              fullName: personnel.fullName,
+              rankName: ranks.name,
+              positionTitle: positions.title,
+              ipn: personnel.ipn,
+              currentStatusCode: personnel.currentStatusCode
+            })
+            .from(personnel)
+            .leftJoin(ranks, eq(personnel.rankId, ranks.id))
+            .leftJoin(positions, eq(personnel.currentPositionIdx, positions.positionIndex))
+            .where(sql`${personnel.id} IN (${sql.raw([...transferredOutIds].join(','))})`)
+            .orderBy(asc(personnel.fullName))
+            .all()
+        : []
+
+      // Combined: current personnel first, then transferred-out
+      const personnelRows = [...currentRows, ...transferredRows]
+
+      // DGV marks for the month
+      const marksRows = db
+        .select()
+        .from(dgvMarks)
+        .where(and(
+          sql`${dgvMarks.date} >= ${firstDay}`,
+          sql`${dgvMarks.date} <= ${lastDay}`
+        ))
+        .all()
+
+      // Build lookup: personnelId → { date → dgvCode }
+      const marksMap = new Map<number, Record<string, string>>()
+      for (const m of marksRows) {
+        if (!marksMap.has(m.personnelId)) marksMap.set(m.personnelId, {})
+        marksMap.get(m.personnelId)![m.date] = m.dgvCode
+      }
+
+      // Month metadata
+      const yearMonth = `${year}-${mm}`
+      const metaRows = db
+        .select()
+        .from(dgvMonthMeta)
+        .where(eq(dgvMonthMeta.yearMonth, yearMonth))
+        .all()
+
+      // Global meta
+      let grounds100 = ''
+      let grounds30 = ''
+      // Per-person meta: personnelId → { metaKey → metaValue }
+      const personMeta = new Map<number, Record<string, string>>()
+
+      for (const m of metaRows) {
+        if (m.personnelId === 0) {
+          if (m.metaKey === 'grounds_100') grounds100 = m.metaValue
+          if (m.metaKey === 'grounds_30') grounds30 = m.metaValue
+        } else {
+          if (!personMeta.has(m.personnelId)) personMeta.set(m.personnelId, {})
+          personMeta.get(m.personnelId)![m.metaKey] = m.metaValue
+        }
+      }
+
+      const rows = personnelRows.map((p) => {
+        const pm = personMeta.get(p.id) ?? {}
+        return {
+          personnelId: p.id,
+          fullName: p.fullName,
+          rankName: p.rankName,
+          positionTitle: p.positionTitle,
+          ipn: p.ipn,
+          days: marksMap.get(p.id) ?? {},
+          isTransferredOut: transferredOutIds.has(p.id),
+          notes: pm['notes'] ?? '',
+          additionalGrounds: pm['additional_grounds'] ?? '',
+          punishmentReason: pm['punishment_reason'] ?? '',
+          punishmentOrder: pm['punishment_order'] ?? ''
+        }
+      })
+
+      return { year, month, grounds100, grounds30, rows }
+    }
+  )
+
+  // Set single day DGV mark
+  safeHandle(
+    IPC.DGV_SET_DAY,
+    (_event, personnelId: number, date: string, dgvCode: string) => {
+      const db = getDatabase()
+
+      const existing = db
+        .select({ id: dgvMarks.id })
+        .from(dgvMarks)
+        .where(and(eq(dgvMarks.personnelId, personnelId), eq(dgvMarks.date, date)))
+        .get()
+
+      if (existing) {
+        db.update(dgvMarks)
+          .set({ dgvCode })
+          .where(eq(dgvMarks.id, existing.id))
+          .run()
+      } else {
+        db.insert(dgvMarks)
+          .values({ personnelId, date, dgvCode })
+          .run()
+      }
+
+      db.insert(auditLog)
+        .values({
+          tableName: 'dgv_marks',
+          recordId: personnelId,
+          action: existing ? 'update' : 'create',
+          newValues: JSON.stringify({ personnelId, date, dgvCode })
+        })
+        .run()
+
+      return { ok: true }
+    }
+  )
+
+  // Clear single day DGV mark
+  safeHandle(
+    IPC.DGV_CLEAR_DAY,
+    (_event, personnelId: number, date: string) => {
+      const db = getDatabase()
+
+      db.delete(dgvMarks)
+        .where(and(eq(dgvMarks.personnelId, personnelId), eq(dgvMarks.date, date)))
+        .run()
+
+      return { ok: true }
+    }
+  )
+
+  // Bulk set DGV marks (range of days for one person)
+  safeHandle(
+    IPC.DGV_SET_BULK,
+    (_event, personnelId: number, dateFrom: string, dateTo: string, dgvCode: string) => {
+      const db = getDatabase()
+      const dayjs = require('dayjs')
+
+      const result = db.transaction(() => {
+        let current = dayjs(dateFrom)
+        const end = dayjs(dateTo)
+        let count = 0
+
+        while (current.isBefore(end) || current.isSame(end, 'day')) {
+          const dateStr = current.format('YYYY-MM-DD')
+
+          const existing = db
+            .select({ id: dgvMarks.id })
+            .from(dgvMarks)
+            .where(and(eq(dgvMarks.personnelId, personnelId), eq(dgvMarks.date, dateStr)))
+            .get()
+
+          if (existing) {
+            db.update(dgvMarks)
+              .set({ dgvCode })
+              .where(eq(dgvMarks.id, existing.id))
+              .run()
+          } else {
+            db.insert(dgvMarks)
+              .values({ personnelId, date: dateStr, dgvCode })
+              .run()
+          }
+
+          count++
+          current = current.add(1, 'day')
+        }
+
+        return { count }
+      })
+
+      db.insert(auditLog)
+        .values({
+          tableName: 'dgv_marks',
+          recordId: personnelId,
+          action: 'bulk_set',
+          newValues: JSON.stringify({ personnelId, dateFrom, dateTo, dgvCode, count: result.count })
+        })
+        .run()
+
+      return result
+    }
+  )
+
+  // Set global month metadata (grounds_100, grounds_30)
+  safeHandle(
+    IPC.DGV_META_SET,
+    (_event, yearMonth: string, metaKey: string, metaValue: string) => {
+      const db = getDatabase()
+
+      // personnelId = 0 for global meta
+      const existing = db
+        .select({ id: dgvMonthMeta.id })
+        .from(dgvMonthMeta)
+        .where(and(
+          eq(dgvMonthMeta.personnelId, 0),
+          eq(dgvMonthMeta.yearMonth, yearMonth),
+          eq(dgvMonthMeta.metaKey, metaKey)
+        ))
+        .get()
+
+      if (existing) {
+        db.update(dgvMonthMeta)
+          .set({ metaValue })
+          .where(eq(dgvMonthMeta.id, existing.id))
+          .run()
+      } else {
+        db.insert(dgvMonthMeta)
+          .values({ personnelId: 0, yearMonth, metaKey, metaValue })
+          .run()
+      }
+
+      return { ok: true }
+    }
+  )
+
+  // Set per-person month metadata (notes, punishment_reason, etc.)
+  safeHandle(
+    IPC.DGV_PERSON_META_SET,
+    (_event, personnelId: number, yearMonth: string, metaKey: string, metaValue: string) => {
+      const db = getDatabase()
+
+      const existing = db
+        .select({ id: dgvMonthMeta.id })
+        .from(dgvMonthMeta)
+        .where(and(
+          eq(dgvMonthMeta.personnelId, personnelId),
+          eq(dgvMonthMeta.yearMonth, yearMonth),
+          eq(dgvMonthMeta.metaKey, metaKey)
+        ))
+        .get()
+
+      if (existing) {
+        db.update(dgvMonthMeta)
+          .set({ metaValue })
+          .where(eq(dgvMonthMeta.id, existing.id))
+          .run()
+      } else {
+        db.insert(dgvMonthMeta)
+          .values({ personnelId, yearMonth, metaKey, metaValue })
+          .run()
+      }
+
+      return { ok: true }
+    }
+  )
+
+  // Export DGV report as .xlsx
+  safeHandle(IPC.DGV_EXPORT_REPORT, async (_event, year: number, month: number) => {
+    try {
+      const { buildDgvReport } = require('../export/dgv-report-builder')
+      return await buildDgvReport(year, month)
+    } catch (err) {
+      console.error('[ipc] DGV_EXPORT_REPORT error:', err)
+      return { success: false, filePath: '', error: String(err) }
     }
   })
 

@@ -28,7 +28,8 @@ import {
   SunOutlined,
   MoonOutlined,
   HomeOutlined,
-  PrinterOutlined
+  PrinterOutlined,
+  DollarOutlined
 } from '@ant-design/icons'
 import { ThemeContext } from '../../main'
 import { useAppStore } from '../../stores/app.store'
@@ -83,6 +84,11 @@ const menuItems: MenuItem[] = [
       { key: '/attendance', icon: <CalendarOutlined />, label: 'Місячний табель' },
       { key: '/formation-report', icon: <FormOutlined />, label: 'Стройова записка' }
     ]
+  },
+  {
+    key: '/dgv',
+    icon: <DollarOutlined />,
+    label: 'Грошове забезпечення'
   },
   {
     key: 'documents-group',

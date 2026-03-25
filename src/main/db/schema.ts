@@ -507,6 +507,40 @@ export const settings = sqliteTable('settings', {
   value: text('value').notNull()
 })
 
+// ==================== DGV (Грошове забезпечення) ====================
+
+export const dgvMarks = sqliteTable(
+  'dgv_marks',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    personnelId: integer('personnel_id')
+      .notNull()
+      .references(() => personnel.id),
+    date: text('date').notNull(),
+    dgvCode: text('dgv_code').notNull()
+  },
+  (table) => [
+    index('idx_dgv_marks_date').on(table.date),
+    index('idx_dgv_marks_personnel_date').on(table.personnelId, table.date),
+    uniqueIndex('idx_dgv_marks_unique').on(table.personnelId, table.date)
+  ]
+)
+
+export const dgvMonthMeta = sqliteTable(
+  'dgv_month_meta',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    personnelId: integer('personnel_id').notNull().default(0),
+    yearMonth: text('year_month').notNull(),
+    metaKey: text('meta_key').notNull(),
+    metaValue: text('meta_value').notNull()
+  },
+  (table) => [
+    index('idx_dgv_meta_yearmonth').on(table.yearMonth),
+    uniqueIndex('idx_dgv_meta_unique').on(table.personnelId, table.yearMonth, table.metaKey)
+  ]
+)
+
 export const auditLog = sqliteTable(
   'audit_log',
   {

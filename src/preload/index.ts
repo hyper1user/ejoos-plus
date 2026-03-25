@@ -163,6 +163,23 @@ const api = {
     return () => ipcRenderer.removeAllListeners('updater:status')
   },
 
+  // DGV (Грошове забезпечення)
+  dgvCodesList: () => ipcRenderer.invoke(IPC.DGV_CODES_LIST),
+  dgvGetMonth: (year: number, month: number) =>
+    ipcRenderer.invoke(IPC.DGV_GET_MONTH, year, month),
+  dgvSetDay: (personnelId: number, date: string, dgvCode: string) =>
+    ipcRenderer.invoke(IPC.DGV_SET_DAY, personnelId, date, dgvCode),
+  dgvClearDay: (personnelId: number, date: string) =>
+    ipcRenderer.invoke(IPC.DGV_CLEAR_DAY, personnelId, date),
+  dgvSetBulk: (personnelId: number, dateFrom: string, dateTo: string, dgvCode: string) =>
+    ipcRenderer.invoke(IPC.DGV_SET_BULK, personnelId, dateFrom, dateTo, dgvCode),
+  dgvMetaSet: (yearMonth: string, metaKey: string, metaValue: string) =>
+    ipcRenderer.invoke(IPC.DGV_META_SET, yearMonth, metaKey, metaValue),
+  dgvPersonMetaSet: (personnelId: number, yearMonth: string, metaKey: string, metaValue: string) =>
+    ipcRenderer.invoke(IPC.DGV_PERSON_META_SET, personnelId, yearMonth, metaKey, metaValue),
+  dgvExportReport: (year: number, month: number) =>
+    ipcRenderer.invoke(IPC.DGV_EXPORT_REPORT, year, month),
+
   // Docs
   docsGetRoot: (): Promise<string | null> => ipcRenderer.invoke(IPC.DOCS_GET_ROOT),
   docsSetRoot: (rootPath: string) => ipcRenderer.invoke(IPC.DOCS_SET_ROOT, rootPath),

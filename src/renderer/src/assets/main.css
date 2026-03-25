@@ -52,3 +52,9 @@ html[data-theme="dark"] .row-vacant:hover > td,
 html[data-theme="dark"] .row-vacant:hover td { background-color: #3d3518 !important; }
 
 .row-deactivated { text-decoration: line-through; opacity: 0.6; }
+
+/* DGV — transferred out personnel */
+html[data-theme="light"] .dgv-row-transferred > td { background-color: #fff1f0 !important; }
+html[data-theme="light"] .dgv-row-transferred:hover > td { background-color: #ffccc7 !important; }
+html[data-theme="dark"] .dgv-row-transferred > td { background-color: #2a1215 !important; }
+html[data-theme="dark"] .dgv-row-transferred:hover > td { background-color: #3d1a1e !important; }

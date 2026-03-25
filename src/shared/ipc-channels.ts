@@ -102,6 +102,16 @@ export const IPC = {
   STATISTICS_BY_STATUS: 'statistics:by-status',
   STATISTICS_BY_SUBDIVISION: 'statistics:by-subdivision',
 
+  // DGV (Грошове забезпечення)
+  DGV_CODES_LIST: 'dgv:codes-list',
+  DGV_GET_MONTH: 'dgv:get-month',
+  DGV_SET_DAY: 'dgv:set-day',
+  DGV_SET_BULK: 'dgv:set-bulk',
+  DGV_META_SET: 'dgv:meta-set',
+  DGV_PERSON_META_SET: 'dgv:person-meta-set',
+  DGV_EXPORT_REPORT: 'dgv:export-report',
+  DGV_CLEAR_DAY: 'dgv:clear-day',
+
   // Docs (local filesystem documents & photos)
   DOCS_GET_ROOT: 'docs:get-root',
   DOCS_SET_ROOT: 'docs:set-root',

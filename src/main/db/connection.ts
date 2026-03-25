@@ -487,6 +487,25 @@ function createTables(sqliteDb: InstanceType<typeof Database>): void {
       generated_at TEXT DEFAULT (datetime('now'))
     );
 
+    -- ==================== DGV (Грошове забезпечення) ====================
+
+    CREATE TABLE IF NOT EXISTS dgv_marks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      personnel_id INTEGER NOT NULL REFERENCES personnel(id),
+      date TEXT NOT NULL,
+      dgv_code TEXT NOT NULL,
+      UNIQUE(personnel_id, date)
+    );
+
+    CREATE TABLE IF NOT EXISTS dgv_month_meta (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      personnel_id INTEGER NOT NULL DEFAULT 0,
+      year_month TEXT NOT NULL,
+      meta_key TEXT NOT NULL,
+      meta_value TEXT NOT NULL,
+      UNIQUE(personnel_id, year_month, meta_key)
+    );
+
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -521,6 +540,9 @@ function createTables(sqliteDb: InstanceType<typeof Database>): void {
     CREATE INDEX IF NOT EXISTS idx_orders_type_date ON orders(order_type, order_date);
     CREATE INDEX IF NOT EXISTS idx_audit_table_record ON audit_log(table_name, record_id);
     CREATE INDEX IF NOT EXISTS idx_positions_subdivision ON positions(subdivision_id);
+    CREATE INDEX IF NOT EXISTS idx_dgv_marks_date ON dgv_marks(date);
+    CREATE INDEX IF NOT EXISTS idx_dgv_marks_personnel_date ON dgv_marks(personnel_id, date);
+    CREATE INDEX IF NOT EXISTS idx_dgv_meta_yearmonth ON dgv_month_meta(year_month);
   `)
 
   console.log('[db] Таблиці та індекси створено')
