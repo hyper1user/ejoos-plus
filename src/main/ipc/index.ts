@@ -1154,6 +1154,37 @@ export function registerIpcHandlers(): void {
       const db = getDatabase()
       const input = parsed.data
 
+      // v0.8.5: статуси можна призначати тільки тим, хто перебуває в штаті
+      // (currentSubdivision='Г-3'). Виключені та ті, хто в розпорядженні —
+      // не отримують жодних статусів (РВ/РЗ/ВП тощо), бо фактично не
+      // виконують службових обов'язків у роті.
+      const target = db
+        .select({
+          status: personnel.status,
+          currentSubdivision: personnel.currentSubdivision
+        })
+        .from(personnel)
+        .where(eq(personnel.id, input.personnelId))
+        .get()
+
+      if (!target) {
+        return { error: true, issues: [{ message: 'Військовослужбовця не знайдено' }] }
+      }
+      if (target.status === 'excluded') {
+        return {
+          error: true,
+          issues: [{ message: 'Не можна призначити статус виключеному військовослужбовцю' }]
+        }
+      }
+      if (target.currentSubdivision === 'розпорядження') {
+        return {
+          error: true,
+          issues: [
+            { message: 'Не можна призначити статус військовослужбовцю в розпорядженні — спочатку поверніть його на штатну посаду' }
+          ]
+        }
+      }
+
       // Clean empty strings to null
       const cleaned: Record<string, unknown> = {}
       for (const [key, value] of Object.entries(input)) {

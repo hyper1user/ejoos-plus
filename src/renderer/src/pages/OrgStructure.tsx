@@ -4,7 +4,6 @@ import { Spin, Empty } from 'antd'
 import { PrinterOutlined, EditOutlined, TeamOutlined } from '@ant-design/icons'
 import type { PersonnelListItem } from '@shared/types/personnel'
 import { usePersonnelList } from '../hooks/usePersonnel'
-import { useAppStore } from '../stores/app.store'
 import { buildCompanyTree, getPlatoonCodeForPerson } from '@shared/utils/company-structure'
 
 function callsignInitials(callsign: string | null): string {
@@ -14,9 +13,9 @@ function callsignInitials(callsign: string | null): string {
 
 export default function OrgStructure(): JSX.Element {
   const navigate = useNavigate()
-  const globalSubdivision = useAppStore((s) => s.globalSubdivision)
+  // v0.8.5: без subdivision filter — потрібні і ОС у штаті Г-3, і ті,
+  // у кого `currentSubdivision='розпорядження'` (5-й взвод).
   const { data: personnel, loading: personnelLoading } = usePersonnelList({
-    subdivision: globalSubdivision,
     status: 'active',
   })
 

@@ -214,13 +214,12 @@ export default function Dashboard(): JSX.Element {
   const { data: summary, loading: summaryLoading } = useStatisticsSummary()
   const { data: byStatus } = useStatisticsByStatus()
   const { data: movements } = useMovementList({})
-  // v0.8.3: дерево орг-структури 12 ШР будується на льоту з ОС роти
-  // (5 взводів за діапазонами positionIndex), а не з subdivisionsTree —
-  // бо в БД 12 ШР представлена єдиним підрозділом Г-3 без дочірніх.
-  const { data: rotaPersonnel } = usePersonnelList({
-    subdivision: 'Г-3',
-    status: 'active'
-  })
+  // v0.8.3 → v0.8.5: дерево орг-структури 12 ШР будується на льоту з ОС роти.
+  // Без subdivision filter — щоб у 5-й взвод (Розпорядження) потрапляли
+  // ті, у кого `currentSubdivision='розпорядження'` (вони фактично з 12 ШР,
+  // тільки тимчасово без штатної посади). Інших підрозділів у БД немає,
+  // тож зайвих ОС не приходить.
+  const { data: rotaPersonnel } = usePersonnelList({ status: 'active' })
   const tree = useMemo<SubdivisionTreeNode[]>(
     () => [buildCompanyTree(rotaPersonnel)],
     [rotaPersonnel]
