@@ -559,6 +559,9 @@ function createTables(sqliteDb: InstanceType<typeof Database>): void {
   // v0.8.1: rename unit "12 ОШР" → "12 ШР" in settings (correct abbreviation
   // for "штурмова рота" — not "окрема штурмова рота")
   fixUnitNameOshrToShr(sqliteDb)
+
+  // v0.8.2: синхронізація status_types зі значеннями ЕЖООС.xlsx
+  syncStatusTypesFromEjoos(sqliteDb)
 }
 
 function migratePersonnel(sqliteDb: InstanceType<typeof Database>): void {
@@ -638,5 +641,62 @@ function fixUnitNameOshrToShr(sqliteDb: InstanceType<typeof Database>): void {
   const changes = sqliteDb.prepare('SELECT changes() as cnt').get() as { cnt: number }
   if (changes.cnt > 0) {
     console.log(`[db] fixUnitNameOshrToShr: оновлено settings.unit_name на "12 ШР"`)
+  }
+}
+
+// v0.8.2: status_types значення синхронізовані з ЕЖООС.xlsx → Налаштування.
+// Силовий перепис name/group_name/on_supply/reward_amount/sort_order/color_code
+// по code (id незмінні; особовий склад прив'язаний через current_status_code).
+// Викликається на кожному старті — UPDATE без changes повторно нічого не зробить.
+function syncStatusTypesFromEjoos(sqliteDb: InstanceType<typeof Database>): void {
+  type Row = {
+    code: string
+    name: string
+    groupName: string
+    onSupply: 0 | 1
+    rewardAmount: number | null
+    sortOrder: number
+    colorCode: string
+  }
+  const rows: Row[] = [
+    { code: 'РВ',    name: 'Район виконання',                                groupName: 'Так',             onSupply: 1, rewardAmount: 100000, sortOrder: 1,  colorCode: '#52c41a' },
+    { code: 'РЗ',    name: 'Район зосередження',                             groupName: 'Так',             onSupply: 1, rewardAmount: 30000,  sortOrder: 2,  colorCode: '#73d13d' },
+    { code: 'РШ',    name: 'Район штаб',                                     groupName: 'Так',             onSupply: 1, rewardAmount: 50000,  sortOrder: 3,  colorCode: '#95de64' },
+    { code: 'ППД',   name: 'ППД',                                            groupName: 'Так',             onSupply: 1, rewardAmount: null,   sortOrder: 4,  colorCode: '#b7eb8f' },
+    { code: 'АДП',   name: 'Адаптація',                                      groupName: 'Так',             onSupply: 1, rewardAmount: null,   sortOrder: 5,  colorCode: '#d9f7be' },
+    { code: 'БЗВП',  name: 'БЗВП',                                           groupName: 'Так',             onSupply: 1, rewardAmount: null,   sortOrder: 6,  colorCode: '#a0d911' },
+    { code: 'ВП',    name: 'Відпустка',                                      groupName: 'Відпустка',       onSupply: 0, rewardAmount: null,   sortOrder: 10, colorCode: '#1890ff' },
+    { code: 'ДВП',   name: 'Декретна відпустка',                             groupName: 'Відпустка',       onSupply: 0, rewardAmount: null,   sortOrder: 11, colorCode: '#40a9ff' },
+    { code: 'ВПХ',   name: 'Відпустка за хворобою',                          groupName: 'Відпустка',       onSupply: 0, rewardAmount: null,   sortOrder: 12, colorCode: '#69c0ff' },
+    { code: 'ВПС',   name: 'Відпустка по сімейним обставинам',               groupName: 'Відпустка',       onSupply: 0, rewardAmount: null,   sortOrder: 13, colorCode: '#91d5ff' },
+    { code: 'ВПП',   name: 'Відпустка після поранення',                      groupName: 'Відпустка',       onSupply: 0, rewardAmount: null,   sortOrder: 14, colorCode: '#bae7ff' },
+    { code: 'СЗЧ',   name: 'СЗЧ',                                            groupName: 'СЗЧ',             onSupply: 0, rewardAmount: null,   sortOrder: 20, colorCode: '#ff4d4f' },
+    { code: '200',   name: 'Загиблі',                                        groupName: 'Загиблі',         onSupply: 0, rewardAmount: null,   sortOrder: 30, colorCode: '#000000' },
+    { code: 'ЗБ',    name: 'Без вісти',                                      groupName: 'Зниклі безвісти', onSupply: 0, rewardAmount: null,   sortOrder: 31, colorCode: '#434343' },
+    { code: 'ПОЛОН', name: 'Полон',                                          groupName: 'Полон',           onSupply: 0, rewardAmount: null,   sortOrder: 32, colorCode: '#595959' },
+    { code: 'ШП',    name: 'Шпиталь',                                        groupName: 'Лікування',       onSupply: 0, rewardAmount: null,   sortOrder: 40, colorCode: '#faad14' },
+    { code: 'ВД',    name: 'Відрядження',                                    groupName: 'Відрядження',     onSupply: 0, rewardAmount: null,   sortOrder: 50, colorCode: '#13c2c2' },
+    { code: 'НП',    name: 'Не прибув',                                      groupName: 'Ні',              onSupply: 0, rewardAmount: null,   sortOrder: 60, colorCode: '#bfbfbf' },
+    { code: 'ВБВ',   name: 'Вибув',                                          groupName: 'Ні',              onSupply: 0, rewardAmount: null,   sortOrder: 61, colorCode: '#d9d9d9' },
+    { code: 'ЗВ',    name: "Звільнення від виконання службових обов'язків",  groupName: 'Ні',              onSupply: 0, rewardAmount: null,   sortOrder: 62, colorCode: '#8c8c8c' },
+    { code: 'АР',    name: 'Арешт',                                          groupName: 'Ні',              onSupply: 0, rewardAmount: null,   sortOrder: 63, colorCode: '#cf1322' }
+  ]
+  const stmt = sqliteDb.prepare(`
+    UPDATE status_types
+    SET name = ?, group_name = ?, on_supply = ?, reward_amount = ?, sort_order = ?, color_code = ?
+    WHERE code = ?
+      AND (name != ? OR group_name != ? OR on_supply != ? OR IFNULL(reward_amount, -1) != IFNULL(?, -1) OR sort_order != ? OR color_code != ?)
+  `)
+  let updated = 0
+  for (const r of rows) {
+    const result = stmt.run(
+      r.name, r.groupName, r.onSupply, r.rewardAmount, r.sortOrder, r.colorCode,
+      r.code,
+      r.name, r.groupName, r.onSupply, r.rewardAmount, r.sortOrder, r.colorCode
+    )
+    if (result.changes > 0) updated++
+  }
+  if (updated > 0) {
+    console.log(`[db] syncStatusTypesFromEjoos: оновлено ${updated} статусів`)
   }
 }

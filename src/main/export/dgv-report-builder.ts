@@ -5,7 +5,7 @@
 import ExcelJS from 'exceljs'
 import { dialog } from 'electron'
 import { getDatabase } from '../db/connection'
-import { personnel, ranks, positions, statusTypes, dgvMarks, dgvMonthMeta } from '../db/schema'
+import { personnel, ranks, positions, dgvMarks, dgvMonthMeta } from '../db/schema'
 import { eq, and, asc, sql } from 'drizzle-orm'
 import { DGV_CODE_MAP } from '@shared/enums/dgv-codes'
 import type { DgvPeriod } from '@shared/types/dgv'
@@ -156,16 +156,11 @@ export async function buildDgvReport(
   const mm = String(month).padStart(2, '0')
   const yearMonth = `${year}-${mm}`
 
-  // Get on-supply statuses
-  const onSupplyCodesSet = new Set(
-    db.select({ code: statusTypes.code })
-      .from(statusTypes)
-      .where(eq(statusTypes.onSupply, true))
-      .all()
-      .map((s) => s.code)
-  )
-
-  // Fetch active on-supply personnel ordered by position
+  // v0.8.2: фільтрація за currentSubdivision замість onSupply.
+  // onSupply тепер = "на бойовому забезпеченні" (тільки 6 кодів групи "Так"),
+  // тому використовувати його для відбору в ДГВ табель не можна — у табелі
+  // мають бути всі ОС роти, включно з відпустками/шпиталем (вони отримують
+  // відмітки ВП/ШП по днях, а не виключаються зі списку).
   const personnelRows = db
     .select({
       id: personnel.id,
@@ -178,10 +173,12 @@ export async function buildDgvReport(
     .from(personnel)
     .leftJoin(ranks, eq(personnel.rankId, ranks.id))
     .leftJoin(positions, eq(personnel.currentPositionIdx, positions.positionIndex))
-    .where(eq(personnel.status, 'active'))
+    .where(and(
+      eq(personnel.status, 'active'),
+      eq(personnel.currentSubdivision, 'Г-3')
+    ))
     .orderBy(asc(personnel.currentPositionIdx), asc(personnel.fullName))
     .all()
-    .filter((p) => p.currentStatusCode && onSupplyCodesSet.has(p.currentStatusCode))
 
   // Fetch marks
   const firstDay = `${year}-${mm}-01`

@@ -14,13 +14,19 @@ import type { AttendanceMonthData } from '@shared/types/attendance'
 
 type Cat = 'duty' | 'combat' | 'medical' | 'leave' | 'absent' | 'other'
 
-const COMBAT_CODES = new Set(['ВБВ', 'РВ', 'РЗ'])
+const COMBAT_CODES = new Set(['РВ', 'РЗ', 'РШ'])
 
 function categorize(code: string, group: string): Cat {
   if (group === 'Лікування') return 'medical'
-  if (group === 'Відпустка') return 'leave'
-  if (group === 'Інше' || group === 'Загиблі') return 'absent'
-  if (group === 'Виключені') return 'other'
+  if (group === 'Відпустка' || group === 'Відрядження') return 'leave'
+  if (
+    group === 'Загиблі' ||
+    group === 'Зниклі безвісти' ||
+    group === 'Полон' ||
+    group === 'СЗЧ' ||
+    group === 'Ні'
+  )
+    return 'absent'
   if (group === 'Так') return COMBAT_CODES.has(code) ? 'combat' : 'duty'
   return 'other'
 }

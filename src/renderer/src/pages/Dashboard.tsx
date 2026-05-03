@@ -39,13 +39,21 @@ const CAT_LABELS: Record<Cat, string> = {
   other: 'Інші',
 }
 
-const COMBAT_CODES = new Set(['ВБВ', 'РВ', 'РЗ'])
+// v0.8.2: ВБВ більше не "Виконання бойового завдання", а "Вибув" (заглушка табелю).
+// Combat — лише фактичне перебування в полі: РВ, РЗ, РШ.
+const COMBAT_CODES = new Set(['РВ', 'РЗ', 'РШ'])
 
 function categorize(code: string, group: string): Cat {
   if (group === 'Лікування') return 'medical'
-  if (group === 'Відпустка') return 'leave'
-  if (group === 'Інше' || group === 'Загиблі') return 'absent'
-  if (group === 'Виключені') return 'other'
+  if (group === 'Відпустка' || group === 'Відрядження') return 'leave'
+  if (
+    group === 'Загиблі' ||
+    group === 'Зниклі безвісти' ||
+    group === 'Полон' ||
+    group === 'СЗЧ' ||
+    group === 'Ні'
+  )
+    return 'absent'
   if (group === 'Так') return COMBAT_CODES.has(code) ? 'combat' : 'duty'
   return 'other'
 }

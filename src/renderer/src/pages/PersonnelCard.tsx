@@ -51,13 +51,20 @@ import dayjs from 'dayjs'
 
 const { Text } = Typography
 
-const COMBAT_CODES = new Set(['ВБВ', 'РВ', 'РЗ'])
+const COMBAT_CODES = new Set(['РВ', 'РЗ', 'РШ'])
 
 function pillClassForStatus(code: string | null | undefined, group: string | null | undefined): string {
   if (!code || !group) return 'pill muted'
   if (group === 'Лікування') return 'pill medical'
-  if (group === 'Відпустка') return 'pill leave'
-  if (group === 'Інше' || group === 'Загиблі') return 'pill absent'
+  if (group === 'Відпустка' || group === 'Відрядження') return 'pill leave'
+  if (
+    group === 'Загиблі' ||
+    group === 'Зниклі безвісти' ||
+    group === 'Полон' ||
+    group === 'СЗЧ' ||
+    group === 'Ні'
+  )
+    return 'pill absent'
   if (group === 'Так') return COMBAT_CODES.has(code) ? 'pill combat' : 'pill duty'
   return 'pill muted'
 }

@@ -21,7 +21,7 @@ import { useAppStore } from '../stores/app.store'
 
 type Cat = 'all' | 'duty' | 'combat' | 'medical' | 'leave' | 'absent'
 
-const COMBAT_CODES = new Set(['ВБВ', 'РВ', 'РЗ'])
+const COMBAT_CODES = new Set(['РВ', 'РЗ', 'РШ'])
 
 const CAT_LABELS: Record<Cat, string> = {
   all: 'Усі',
@@ -35,8 +35,15 @@ const CAT_LABELS: Record<Cat, string> = {
 function categorizeStatus(code: string | null, group: string | null): Cat | 'other' {
   if (!code || !group) return 'other'
   if (group === 'Лікування') return 'medical'
-  if (group === 'Відпустка') return 'leave'
-  if (group === 'Інше' || group === 'Загиблі') return 'absent'
+  if (group === 'Відпустка' || group === 'Відрядження') return 'leave'
+  if (
+    group === 'Загиблі' ||
+    group === 'Зниклі безвісти' ||
+    group === 'Полон' ||
+    group === 'СЗЧ' ||
+    group === 'Ні'
+  )
+    return 'absent'
   if (group === 'Так') return COMBAT_CODES.has(code) ? 'combat' : 'duty'
   return 'other'
 }
