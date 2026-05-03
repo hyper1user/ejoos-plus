@@ -119,11 +119,19 @@ export default function DocumentGenerator(): JSX.Element {
 
   return (
     <div>
-      <Title level={3} style={{ marginBottom: 24 }}>
-        <FileTextOutlined /> Генератор документів
-      </Title>
+      <div className="page-header">
+        <div className="titles">
+          <div className="eyebrow">генератор · word-документи</div>
+          <h1>Генерація документів</h1>
+          <div className="sub">
+            Шаблони з підстановкою даних бійця та реквізитів. Підтримка docxtemplater.
+          </div>
+        </div>
+      </div>
 
-      <Steps current={current} items={steps} style={{ marginBottom: 24 }} />
+      <div className="card" style={{ padding: 14, marginBottom: 12 }}>
+        <Steps current={current} items={steps} />
+      </div>
 
       {/* Step 0: Select Template */}
       {current === 0 && (

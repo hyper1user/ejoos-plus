@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Card, Button, Space, Spin, Typography, message, DatePicker } from 'antd'
-import { PrinterOutlined, FileExcelOutlined } from '@ant-design/icons'
+import { Spin, message } from 'antd'
+import { PrinterOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
+import { RANKS, RankCategory } from '@shared/enums/ranks'
 
-const { Title } = Typography
+type CategoryFilter = 'all' | RankCategory.Officers | RankCategory.Sergeants | RankCategory.Soldiers
 
 interface StaffRosterRow {
   positionIndex: string
@@ -125,6 +126,11 @@ function getSubdivisionColor(
   return { bg: '#c0392b', text: '#fff' } // squad/team level
 }
 
+// Map rankName → category
+const RANK_TO_CATEGORY = new Map<string, RankCategory>(
+  RANKS.map((r) => [r.name, r.category])
+)
+
 export default function StaffRoster(): JSX.Element {
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<{
@@ -134,8 +140,10 @@ export default function StaffRoster(): JSX.Element {
   } | null>(null)
   const [date] = useState(dayjs())
   const printRef = useRef<HTMLDivElement>(null)
+  const [subFilter, setSubFilter] = useState<string>('all')
+  const [catFilter, setCatFilter] = useState<CategoryFilter>('all')
 
-  const fetchData = async () => {
+  const fetchData = async (): Promise<void> => {
     setLoading(true)
     try {
       const result = await window.api.staffRoster()
@@ -151,13 +159,42 @@ export default function StaffRoster(): JSX.Element {
     fetchData()
   }, [])
 
+  // Усі коди підрозділів (для фільтра)
+  const subdivisionOptions = useMemo(() => {
+    if (!data) return []
+    const seen = new Map<string, { code: string; name: string; sortOrder: number }>()
+    for (const r of data.rows) {
+      if (!seen.has(r.subdivisionCode)) {
+        seen.set(r.subdivisionCode, {
+          code: r.subdivisionCode,
+          name: r.subdivisionName,
+          sortOrder: r.subdivisionSortOrder,
+        })
+      }
+    }
+    return Array.from(seen.values()).sort((a, b) => a.sortOrder - b.sortOrder)
+  }, [data])
+
+  // Filtered rows
+  const filteredRows = useMemo<StaffRosterRow[]>(() => {
+    if (!data) return []
+    return data.rows.filter((r) => {
+      if (subFilter !== 'all' && r.subdivisionCode !== subFilter) return false
+      if (catFilter !== 'all') {
+        const cat = r.rankName ? RANK_TO_CATEGORY.get(r.rankName) : undefined
+        if (cat !== catFilter) return false
+      }
+      return true
+    })
+  }, [data, subFilter, catFilter])
+
   // Group rows by subdivision, maintaining hierarchy order
   const groups = useMemo<SubdivisionGroup[]>(() => {
-    if (!data) return []
+    if (filteredRows.length === 0) return []
 
     const groupMap = new Map<number, SubdivisionGroup>()
 
-    for (const row of data.rows) {
+    for (const row of filteredRows) {
       if (!groupMap.has(row.subdivisionId)) {
         groupMap.set(row.subdivisionId, {
           subdivisionId: row.subdivisionId,
@@ -171,11 +208,10 @@ export default function StaffRoster(): JSX.Element {
       groupMap.get(row.subdivisionId)!.rows.push(row)
     }
 
-    // Sort groups by sortOrder
     return Array.from(groupMap.values()).sort(
       (a, b) => a.subdivisionSortOrder - b.subdivisionSortOrder
     )
-  }, [data])
+  }, [filteredRows])
 
   const handlePrint = () => {
     window.print()
@@ -186,30 +222,89 @@ export default function StaffRoster(): JSX.Element {
   return (
     <div>
       {/* Screen controls - hidden when printing */}
-      <div className="staff-roster-controls no-print" style={{ padding: 16 }}>
-        <Card>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}
-          >
-            <Title level={4} style={{ margin: 0 }}>
-              Штатний розпис
-            </Title>
-            <Space>
-              <Button
-                type="primary"
-                icon={<PrinterOutlined />}
-                onClick={handlePrint}
-                disabled={!data}
-              >
-                Друк
-              </Button>
-            </Space>
+      <div className="staff-roster-controls no-print">
+        <div className="page-header">
+          <div className="titles">
+            <div className="eyebrow">штат · документ для друку</div>
+            <h1>Штатний розпис</h1>
+            <div className="sub">
+              12 ШР · 4 ШБ · 92 ОШБр
+              {summary
+                ? ` · ${summary.totalPersonnel} осіб · ${summary.totalPositions} посад`
+                : ''}
+              {(subFilter !== 'all' || catFilter !== 'all') &&
+                ` · показано ${filteredRows.length}`}
+            </div>
           </div>
-        </Card>
+          <div className="actions">
+            <button className="btn primary" onClick={handlePrint} disabled={!data}>
+              <PrinterOutlined />
+              Друк
+            </button>
+          </div>
+        </div>
+
+        {/* Фільтр-бар */}
+        <div
+          className="card"
+          style={{
+            padding: 10,
+            marginBottom: 10,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span className="eyebrow">підрозділ</span>
+            <div className="seg-control" style={{ flexWrap: 'wrap' }}>
+              <button
+                className={subFilter === 'all' ? 'on' : ''}
+                onClick={() => setSubFilter('all')}
+              >
+                Усі
+              </button>
+              {subdivisionOptions.map((s) => (
+                <button
+                  key={s.code}
+                  className={subFilter === s.code ? 'on' : ''}
+                  onClick={() => setSubFilter(s.code)}
+                  title={s.name}
+                >
+                  {s.code}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ width: 1, height: 22, background: 'var(--line-1)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="eyebrow">категорія</span>
+            <div className="seg-control">
+              <button className={catFilter === 'all' ? 'on' : ''} onClick={() => setCatFilter('all')}>
+                Усі
+              </button>
+              <button
+                className={catFilter === RankCategory.Officers ? 'on' : ''}
+                onClick={() => setCatFilter(RankCategory.Officers)}
+              >
+                Офіцери
+              </button>
+              <button
+                className={catFilter === RankCategory.Sergeants ? 'on' : ''}
+                onClick={() => setCatFilter(RankCategory.Sergeants)}
+              >
+                Сержанти
+              </button>
+              <button
+                className={catFilter === RankCategory.Soldiers ? 'on' : ''}
+                onClick={() => setCatFilter(RankCategory.Soldiers)}
+              >
+                Солдати
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {loading ? (

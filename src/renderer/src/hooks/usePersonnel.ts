@@ -55,6 +55,9 @@ interface PersonnelCardData extends Personnel {
   rankCategory?: string | null
   positionTitle?: string | null
   statusName?: string | null
+  statusColorCode?: string | null
+  educationLevelName?: string | null
+  tccName?: string | null
 }
 
 interface UsePersonnelCardResult {

@@ -7,7 +7,7 @@ export type ThemeMode = 'light' | 'dark'
 export function useThemeMode(): [ThemeMode, () => void] {
   const [mode, setMode] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem(STORAGE_KEY)
-    return saved === 'dark' ? 'dark' : 'light'
+    return saved === 'light' ? 'light' : 'dark'
   })
 
   useEffect(() => {

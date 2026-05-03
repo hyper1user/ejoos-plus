@@ -132,7 +132,7 @@ export const SUBDIVISIONS = [
   { code: 'РОЗП', name: 'Розпорядження', fullName: 'В розпорядженні командира', parentCode: null, sortOrder: 20 }
 ] as const
 
-// Seed positions: key command/staff positions for 12 ОШР
+// Seed positions: key command/staff positions for 12 ШР
 export const SEED_POSITIONS = [
   // Управління
   { positionIndex: 'Г03001', subdivisionCode: 'Г-0', title: 'Командир батальйону', rankRequired: 'капітан', sortOrder: 1 },

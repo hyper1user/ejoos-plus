@@ -23,7 +23,6 @@ import {
   App
 } from 'antd'
 import {
-  ArrowLeftOutlined,
   EditOutlined,
   UserOutlined,
   PlusOutlined,
@@ -33,7 +32,9 @@ import {
   FileImageOutlined,
   FileOutlined,
   FolderOpenOutlined,
-  CameraOutlined
+  CameraOutlined,
+  PrinterOutlined,
+  FormOutlined
 } from '@ant-design/icons'
 import { usePersonnelCard } from '../hooks/usePersonnel'
 import { usePersonMovements } from '../hooks/useMovements'
@@ -48,7 +49,18 @@ import StatusHistoryForm from '../components/statuses/StatusHistoryForm'
 import StatusTimeline from '../components/statuses/StatusTimeline'
 import dayjs from 'dayjs'
 
-const { Title, Text } = Typography
+const { Text } = Typography
+
+const COMBAT_CODES = new Set(['ВБВ', 'РВ', 'РЗ'])
+
+function pillClassForStatus(code: string | null | undefined, group: string | null | undefined): string {
+  if (!code || !group) return 'pill muted'
+  if (group === 'Лікування') return 'pill medical'
+  if (group === 'Відпустка') return 'pill leave'
+  if (group === 'Інше' || group === 'Загиблі') return 'pill absent'
+  if (group === 'Так') return COMBAT_CODES.has(code) ? 'pill combat' : 'pill duty'
+  return 'pill muted'
+}
 
 interface DocFile {
   name: string
@@ -478,114 +490,207 @@ export default function PersonnelCard(): JSX.Element {
   return (
     <>
       {/* ── Page header ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/personnel')}>
-          Назад
-        </Button>
-        <Title level={3} style={{ margin: 0, flex: 1 }}>
-          Картка військовослужбовця
-        </Title>
-        <Button type="primary" icon={<EditOutlined />} onClick={() => setDrawerOpen(true)}>
-          Редагування
-        </Button>
+      <div className="page-header">
+        <div className="titles">
+          <div
+            className="eyebrow"
+            style={{ cursor: 'pointer' }}
+            onClick={() => navigate('/personnel')}
+          >
+            ← Реєстр · картка №{String(person.id).padStart(3, '0')}
+          </div>
+          <h1>{person.fullName}</h1>
+        </div>
+        <div className="actions">
+          <button className="btn ghost" onClick={() => window.print()}>
+            <PrinterOutlined />
+            Друк
+          </button>
+          <button className="btn" onClick={() => navigate('/documents/generate')}>
+            <FormOutlined />
+            Згенерувати документ
+          </button>
+          <button className="btn primary" onClick={() => setDrawerOpen(true)}>
+            <EditOutlined />
+            Редагувати
+          </button>
+        </div>
+      </div>
+
+      {/* ── Profile hero ── */}
+      <div className="profile-hero" style={{ marginBottom: 12 }}>
+        <div
+          onClick={handlePhotoClick}
+          onMouseEnter={() => setPhotoHover(true)}
+          onMouseLeave={() => setPhotoHover(false)}
+          style={{
+            position: 'relative',
+            width: 96,
+            height: 96,
+            cursor: 'pointer',
+            overflow: 'hidden',
+            borderRadius: 'var(--radius-2)',
+            border: `1px solid ${photoHover ? 'var(--accent-line)' : 'var(--line-2)'}`,
+            background: 'var(--bg-3)',
+            display: 'grid',
+            placeItems: 'center',
+            transition: 'border-color 0.2s',
+            flexShrink: 0,
+          }}
+        >
+          {effectivePhotoPath && !photoError ? (
+            <img
+              src={`safe-file:///${effectivePhotoPath.replace(/\\/g, '/')}`}
+              alt=""
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              onError={() => setPhotoError(true)}
+            />
+          ) : (
+            <div
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontWeight: 600,
+                fontSize: 18,
+                color: 'var(--fg-1)',
+                letterSpacing: '0.04em',
+              }}
+            >
+              {person.callsign?.slice(0, 4).toUpperCase() || <UserOutlined style={{ fontSize: 32, color: 'var(--fg-3)' }} />}
+            </div>
+          )}
+          {(photoHover || uploadingPhoto) && (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'rgba(0,0,0,0.55)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+                color: '#fff',
+                fontSize: 11,
+              }}
+            >
+              <CameraOutlined style={{ fontSize: 22 }} />
+              <span>Змінити</span>
+            </div>
+          )}
+        </div>
+
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginBottom: 6,
+              flexWrap: 'wrap',
+            }}
+          >
+            <span className="rank">{person.rankName || '—'}</span>
+            <span style={{ width: 1, height: 12, background: 'var(--line-2)' }} />
+            <span
+              className="mono"
+              style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600 }}
+            >
+              {person.callsign || '—'}
+            </span>
+          </div>
+          <div
+            style={{
+              fontSize: 22,
+              fontWeight: 600,
+              letterSpacing: '-0.015em',
+              marginBottom: 4,
+              color: 'var(--fg-0)',
+            }}
+          >
+            {person.fullName}
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--fg-2)', marginBottom: 10 }}>
+            {person.positionTitle || person.currentPositionIdx || '—'}
+            {person.currentSubdivision ? ` · ${person.currentSubdivision} · 12 ШР` : ''}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {person.currentStatusCode ? (
+              <span
+                className={pillClassForStatus(
+                  person.currentStatusCode,
+                  statusTypes.find((s) => s.code === person.currentStatusCode)?.groupName
+                )}
+              >
+                <span className="dot" />
+                {person.currentStatusCode} · {person.statusName || ''}
+              </span>
+            ) : (
+              <span className="pill muted">
+                <span className="dot" />
+                без статусу
+              </span>
+            )}
+            {person.serviceType && (
+              <span className="mono dim" style={{ fontSize: 11 }}>
+                · {person.serviceType}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            alignItems: 'flex-end',
+            flexShrink: 0,
+          }}
+        >
+          <div className="eyebrow">ОСОБИСТИЙ №</div>
+          <div
+            className="mono tnum"
+            style={{ fontSize: 18, fontWeight: 600, letterSpacing: '0.06em' }}
+          >
+            {person.personalNumber || person.ipn || '—'}
+          </div>
+          <div className="mono dim" style={{ fontSize: 10, marginTop: 4 }}>
+            ІПН {person.ipn ? `${person.ipn.slice(0, 2)}●●●●●●${person.ipn.slice(-2)}` : '●●●●●●●●●●'}
+          </div>
+        </div>
       </div>
 
       {/* ── Top 3-column section ── */}
       <Row gutter={[12, 12]}>
-        {/* ── Col 1: Основні дані (з фото) ── */}
+        {/* ── Col 1: Основні дані ── */}
         <Col xs={24} lg={12}>
           <Card bodyStyle={{ padding: 12 }} style={{ height: '100%' }}>
             <SectionTitle>Основні дані</SectionTitle>
-            <div style={{ display: 'flex', gap: 16 }}>
-              {/* Portrait photo */}
-              <Tooltip title="Клік для зміни фото">
-                <div
-                  onClick={handlePhotoClick}
-                  onMouseEnter={() => setPhotoHover(true)}
-                  onMouseLeave={() => setPhotoHover(false)}
-                  style={{
-                    position: 'relative',
-                    width: 120,
-                    height: 155,
-                    flexShrink: 0,
-                    cursor: 'pointer',
-                    overflow: 'hidden',
-                    borderRadius: 4,
-                    border: `2px solid ${photoHover ? token.colorPrimary : token.colorBorder}`,
-                    transition: 'border-color 0.2s',
-                    background: token.colorFillSecondary
-                  }}
-                >
-                  {effectivePhotoPath && !photoError ? (
-                    <img
-                      src={`safe-file:///${effectivePhotoPath.replace(/\\/g, '/')}`}
-                      alt=""
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                      onError={() => setPhotoError(true)}
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: 110 }} />
+                <col />
+              </colgroup>
+              <tbody>
+                <InfoRow label="ПІБ" value={<strong>{person.fullName}</strong>} />
+                <InfoRow label="Звання" value={<RankBadge rankName={person.rankName} category={person.rankCategory} />} />
+                <InfoRow label="Позивний" value={person.callsign || '—'} />
+                <InfoRow
+                  label="Статус"
+                  value={
+                    <StatusBadge
+                      statusCode={person.currentStatusCode}
+                      statusName={person.statusName}
+                      colorCode={statusColor}
                     />
-                  ) : (
-                    <div
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 8
-                      }}
-                    >
-                      <UserOutlined style={{ fontSize: 40, color: token.colorTextQuaternary }} />
-                      <Text style={{ fontSize: 11, color: token.colorTextQuaternary }}>Фото</Text>
-                    </div>
-                  )}
-                  {(photoHover || uploadingPhoto) && (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        background: 'rgba(0,0,0,0.55)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 6
-                      }}
-                    >
-                      <CameraOutlined style={{ color: '#fff', fontSize: 24 }} />
-                      <Text style={{ color: '#fff', fontSize: 11 }}>Змінити</Text>
-                    </div>
-                  )}
-                </div>
-              </Tooltip>
-
-              {/* Main fields */}
-              <table style={{ flex: 1, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-                <colgroup>
-                  <col style={{ width: 90 }} />
-                  <col />
-                </colgroup>
-                <tbody>
-                  <InfoRow label="ПІБ" value={<strong>{person.fullName}</strong>} />
-                  <InfoRow label="Звання" value={<RankBadge rankName={person.rankName} category={person.rankCategory} />} />
-                  <InfoRow label="Позивний" value={person.callsign || '—'} />
-                  <InfoRow
-                    label="Статус"
-                    value={
-                      <StatusBadge
-                        statusCode={person.currentStatusCode}
-                        statusName={person.statusName}
-                        colorCode={statusColor}
-                      />
-                    }
-                  />
-                  <InfoRow label="Підрозділ" value={person.currentSubdivision || '—'} />
-                  <InfoRow label="Посада" value={person.positionTitle || person.currentPositionIdx || '—'} />
-                  <InfoRow label="Вид служби" value={person.serviceType || '—'} />
-                  <InfoRow label="Особистий номер" value={person.ipn || '—'} />
-                </tbody>
-              </table>
-            </div>
+                  }
+                />
+                <InfoRow label="Підрозділ" value={person.currentSubdivision || '—'} />
+                <InfoRow label="Посада" value={person.positionTitle || person.currentPositionIdx || '—'} />
+                <InfoRow label="Вид служби" value={person.serviceType || '—'} />
+                <InfoRow label="Особистий номер" value={person.ipn || '—'} />
+              </tbody>
+            </table>
           </Card>
         </Col>
 

@@ -138,30 +138,29 @@ export default function MissingDocuments(): JSX.Element {
   ]
 
   return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Відсутні документи
-        </Title>
-        <Space>
+    <>
+      <div className="page-header">
+        <div className="titles">
+          <div className="eyebrow">документи · перевірка повноти</div>
+          <h1>Відсутні документи</h1>
+          <div className="sub">
+            {loaded ? `Знайдено ${data.length} осіб з відсутніми документами` : 'Натисніть «Перевірити» для запуску сканування'}
+          </div>
+        </div>
+        <div className="actions">
           {loaded && data.length > 0 && (
-            <Tooltip title="Експортувати у .xlsx">
-              <Button icon={<FileExcelOutlined />} onClick={handleExport}>
-                Експорт .xlsx
-              </Button>
-            </Tooltip>
+            <button className="btn" onClick={handleExport}>
+              <FileExcelOutlined />
+              Експорт .xlsx
+            </button>
           )}
-          <Button
-            type="primary"
-            icon={<SyncOutlined spin={loading} />}
-            loading={loading}
-            onClick={load}
-          >
+          <button className="btn primary" onClick={load} disabled={loading}>
+            <SyncOutlined spin={loading} />
             {loaded ? 'Оновити' : 'Перевірити'}
-          </Button>
-        </Space>
-      </Space>
-
+          </button>
+        </div>
+      </div>
+      <Space direction="vertical" size={16} style={{ width: '100%' }}>
       {noRoot && (
         <Alert
           type="warning"
@@ -206,5 +205,6 @@ export default function MissingDocuments(): JSX.Element {
         />
       )}
     </Space>
+    </>
   )
 }

@@ -181,18 +181,22 @@ export default function Orders(): JSX.Element {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={3} style={{ margin: 0 }}>
-          <FileProtectOutlined /> Накази
-        </Title>
-        <Space>
-          <Button icon={<FileTextOutlined />} onClick={handleGenerateDoc}>
+      <div className="page-header">
+        <div className="titles">
+          <div className="eyebrow">документи · накази</div>
+          <h1>Накази</h1>
+          <div className="sub">Журнал наказів за період · підстава для переміщень та статусів</div>
+        </div>
+        <div className="actions">
+          <button className="btn" onClick={handleGenerateDoc}>
+            <FileTextOutlined />
             Згенерувати документ
-          </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setDrawerOpen(true)}>
+          </button>
+          <button className="btn primary" onClick={() => setDrawerOpen(true)}>
+            <PlusOutlined />
             Новий наказ
-          </Button>
-        </Space>
+          </button>
+        </div>
       </div>
 
       <Space style={{ marginBottom: 16 }}>

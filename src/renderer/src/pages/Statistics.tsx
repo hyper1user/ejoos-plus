@@ -267,13 +267,26 @@ function CategoryTab(): JSX.Element {
 // --- Main ---
 export default function Statistics(): JSX.Element {
   return (
-    <Tabs
-      defaultActiveKey="status"
-      items={[
-        { key: 'status', label: 'По статусах', children: <StatusTab /> },
-        { key: 'subdivision', label: 'По підрозділах', children: <SubdivisionTab /> },
-        { key: 'category', label: 'По категоріях', children: <CategoryTab /> }
-      ]}
-    />
+    <>
+      <div className="page-header">
+        <div className="titles">
+          <div className="eyebrow">аналітика · поточний стан</div>
+          <h1>Статистика</h1>
+          <div className="sub">
+            Розподіл особового складу за статусами, підрозділами та категоріями
+          </div>
+        </div>
+      </div>
+      <div className="card" style={{ padding: 14 }}>
+        <Tabs
+          defaultActiveKey="status"
+          items={[
+            { key: 'status', label: 'По статусах', children: <StatusTab /> },
+            { key: 'subdivision', label: 'По підрозділах', children: <SubdivisionTab /> },
+            { key: 'category', label: 'По категоріях', children: <CategoryTab /> }
+          ]}
+        />
+      </div>
+    </>
   )
 }

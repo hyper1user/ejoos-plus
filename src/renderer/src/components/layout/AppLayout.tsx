@@ -1,11 +1,9 @@
-import { useState, useEffect, useContext } from 'react'
-import { Layout, Menu, Tag, Space, Tooltip, theme } from 'antd'
+import { useState, useEffect, useContext, useMemo } from 'react'
+import { Layout, Menu, Tooltip, Input } from 'antd'
 import type { MenuProps } from 'antd'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   DashboardOutlined,
-  TeamOutlined,
-  ApartmentOutlined,
   SwapOutlined,
   TagsOutlined,
   CalendarOutlined,
@@ -22,114 +20,108 @@ import {
   FolderOutlined,
   MedicineBoxOutlined,
   WarningOutlined,
-  DatabaseOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   SunOutlined,
   MoonOutlined,
   HomeOutlined,
   PrinterOutlined,
-  DollarOutlined
+  DollarOutlined,
+  RightOutlined,
+  SearchOutlined,
+  BellOutlined,
 } from '@ant-design/icons'
 import { ThemeContext } from '../../main'
-import { useAppStore } from '../../stores/app.store'
 import dayjs from 'dayjs'
 import AppRoutes from '../../routes'
 
 const { Header, Sider, Content } = Layout
 
-type MenuItem = Required<MenuProps>['items'][number]
+const SIDEBAR_W = 224
+const SIDEBAR_COLLAPSED_W = 56
+const HEADER_H = 48
 
-const menuItems: MenuItem[] = [
-  {
-    key: '/',
-    icon: <DashboardOutlined />,
-    label: 'Головна'
-  },
-  {
-    key: 'personnel-group',
-    icon: <TeamOutlined />,
-    label: 'Особовий склад',
-    children: [
-      { key: '/personnel', icon: <UnorderedListOutlined />, label: 'Реєстр' },
-      { key: '/personnel/excluded', icon: <UserDeleteOutlined />, label: 'Виключені' }
-    ]
-  },
-  {
-    key: 'structure-group',
-    icon: <ApartmentOutlined />,
-    label: 'Штат та посади',
-    children: [
-      { key: '/org-structure', icon: <BranchesOutlined />, label: 'Орг. структура' },
-      { key: '/staffing', icon: <TableOutlined />, label: 'ШПО' },
-      { key: '/positions', icon: <SolutionOutlined />, label: 'Перелік посад' },
-      { key: '/staff-roster', icon: <PrinterOutlined />, label: 'Штатний розпис' }
-    ]
-  },
-  {
-    key: '/movements',
-    icon: <SwapOutlined />,
-    label: 'Переміщення'
-  },
-  {
-    key: '/statuses',
-    icon: <TagsOutlined />,
-    label: 'Статуси'
-  },
-  {
-    key: 'attendance-group',
-    icon: <CalendarOutlined />,
-    label: 'Табель',
-    children: [
-      { key: '/attendance', icon: <CalendarOutlined />, label: 'Місячний табель' },
-      { key: '/formation-report', icon: <FormOutlined />, label: 'Стройова записка' }
-    ]
-  },
-  {
-    key: '/dgv',
-    icon: <DollarOutlined />,
-    label: 'Грошове забезпечення'
-  },
-  {
-    key: 'documents-group',
-    icon: <FileTextOutlined />,
-    label: 'Документи',
-    children: [
-      { key: '/missing-docs', icon: <WarningOutlined />, label: 'Відсутні документи' },
-      { key: '/leave', icon: <FileTextOutlined />, label: 'Відпустки' },
-      { key: '/injuries', icon: <MedicineBoxOutlined />, label: 'Поранення / Втрати' },
-      { key: '/documents/generate', icon: <FormOutlined />, label: 'Генератор' },
-      { key: '/documents/archive', icon: <FolderOutlined />, label: 'Архів' }
-    ]
-  },
-  {
-    key: '/statistics',
-    icon: <BarChartOutlined />,
-    label: 'Статистика'
-  },
-  {
-    key: '/import-export',
-    icon: <ImportOutlined />,
-    label: 'Імпорт / Експорт'
-  },
-  {
-    key: '/settings',
-    icon: <SettingOutlined />,
-    label: 'Налаштування'
-  }
-]
+const PAGE_TITLES: Record<string, string> = {
+  '/': 'Дашборд',
+  '/personnel': 'Особовий склад · Реєстр',
+  '/personnel/excluded': 'Особовий склад · Виключені',
+  '/statuses': 'Статуси',
+  '/org-structure': 'Організаційна структура',
+  '/staffing': 'ШПО',
+  '/positions': 'Перелік посад',
+  '/staff-roster': 'Штатний розпис',
+  '/movements': 'Переміщення',
+  '/attendance': 'Місячний табель',
+  '/formation-report': 'Стройова записка',
+  '/dgv': 'Грошове забезпечення',
+  '/missing-docs': 'Відсутні документи',
+  '/leave': 'Відпустки',
+  '/injuries': 'Поранення / Втрати',
+  '/documents/generate': 'Генератор документів',
+  '/documents/archive': 'Архів документів',
+  '/statistics': 'Статистика',
+  '/import-export': 'Імпорт / Експорт',
+  '/settings': 'Налаштування',
+}
 
-function findOpenKey(pathname: string): string[] {
-  for (const item of menuItems) {
-    if (item && 'children' in item && item.children) {
-      for (const child of item.children as { key: string }[]) {
-        if (child.key === pathname) {
-          return [item.key as string]
-        }
-      }
-    }
-  }
-  return []
+function getCurrentTitle(pathname: string): string {
+  if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname]
+  if (pathname.startsWith('/personnel/')) return 'Картка бійця'
+  return 'Альварес AI'
+}
+
+function BrandMark(): JSX.Element {
+  return (
+    <div
+      style={{
+        width: 26,
+        height: 26,
+        borderRadius: 5,
+        background: 'var(--bg-3)',
+        border: '1px solid var(--line-2)',
+        display: 'grid',
+        placeItems: 'center',
+        fontFamily: 'var(--font-mono)',
+        fontWeight: 700,
+        fontSize: 12,
+        color: 'var(--accent)',
+        flexShrink: 0,
+        letterSpacing: '-0.04em',
+        position: 'relative',
+      }}
+    >
+      A
+      <span
+        style={{
+          position: 'absolute',
+          inset: 3,
+          border: '1px solid var(--accent-line)',
+          borderRadius: 3,
+          pointerEvents: 'none',
+          opacity: 0.5,
+        }}
+      />
+    </div>
+  )
+}
+
+function NavBadge({ value }: { value: number | string }): JSX.Element {
+  return (
+    <span
+      className="mono"
+      style={{
+        fontSize: 10,
+        color: 'var(--fg-3)',
+        background: 'var(--bg-3)',
+        padding: '1px 6px',
+        borderRadius: 8,
+        marginLeft: 8,
+        lineHeight: 1.4,
+      }}
+    >
+      {value}
+    </span>
+  )
 }
 
 export default function AppLayout(): JSX.Element {
@@ -138,138 +130,359 @@ export default function AppLayout(): JSX.Element {
   const [collapsed, setCollapsed] = useState(false)
   const [dbStatus, setDbStatus] = useState<string>('')
   const [appVersion, setAppVersion] = useState<string>('')
-  const { token } = theme.useToken()
+  const [personnelCount, setPersonnelCount] = useState<number>(0)
   const { mode, toggle: toggleTheme } = useContext(ThemeContext)
   const isDark = mode === 'dark'
 
-
   useEffect(() => {
-    window.api.dbHealth().then((result: { ok: boolean; message: string }) => {
-      setDbStatus(result.ok ? 'OK' : 'Error')
+    window.api.dbHealth().then((r: { ok: boolean; message: string }) => {
+      setDbStatus(r.ok ? 'OK' : 'Error')
     })
     window.api.appVersion().then(setAppVersion)
+    window.api
+      .personnelList({})
+      .then((rows: unknown[]) => setPersonnelCount(Array.isArray(rows) ? rows.length : 0))
+      .catch(() => setPersonnelCount(0))
   }, [])
 
+  const menuItems: MenuProps['items'] = useMemo(
+    () => [
+      {
+        type: 'group',
+        label: 'Огляд',
+        children: [{ key: '/', icon: <DashboardOutlined />, label: 'Дашборд' }],
+      },
+      {
+        type: 'group',
+        label: 'Особовий склад',
+        children: [
+          {
+            key: '/personnel',
+            icon: <UnorderedListOutlined />,
+            label: (
+              <span style={{ display: 'inline-flex', alignItems: 'center', width: '100%' }}>
+                <span style={{ flex: 1 }}>Реєстр</span>
+                {personnelCount > 0 && !collapsed && <NavBadge value={personnelCount} />}
+              </span>
+            ),
+          },
+          { key: '/personnel/excluded', icon: <UserDeleteOutlined />, label: 'Виключені' },
+          { key: '/statuses', icon: <TagsOutlined />, label: 'Статуси' },
+        ],
+      },
+      {
+        type: 'group',
+        label: 'Структура',
+        children: [
+          { key: '/org-structure', icon: <BranchesOutlined />, label: 'Орг. структура' },
+          { key: '/staffing', icon: <TableOutlined />, label: 'ШПО' },
+          { key: '/positions', icon: <SolutionOutlined />, label: 'Посади' },
+          { key: '/staff-roster', icon: <PrinterOutlined />, label: 'Штатний розпис' },
+          { key: '/movements', icon: <SwapOutlined />, label: 'Переміщення' },
+        ],
+      },
+      {
+        type: 'group',
+        label: 'Облік',
+        children: [
+          { key: '/attendance', icon: <CalendarOutlined />, label: 'Табель' },
+          { key: '/formation-report', icon: <FormOutlined />, label: 'Стройова записка' },
+          { key: '/dgv', icon: <DollarOutlined />, label: 'Грошове' },
+        ],
+      },
+      {
+        type: 'group',
+        label: 'Документи',
+        children: [
+          { key: '/missing-docs', icon: <WarningOutlined />, label: 'Відсутні' },
+          { key: '/leave', icon: <FileTextOutlined />, label: 'Відпустки' },
+          { key: '/injuries', icon: <MedicineBoxOutlined />, label: 'Поранення' },
+          { key: '/documents/generate', icon: <FormOutlined />, label: 'Генератор' },
+          { key: '/documents/archive', icon: <FolderOutlined />, label: 'Архів' },
+        ],
+      },
+      {
+        type: 'group',
+        label: 'Аналітика',
+        children: [
+          { key: '/statistics', icon: <BarChartOutlined />, label: 'Статистика' },
+          { key: '/import-export', icon: <ImportOutlined />, label: 'Імпорт / Експорт' },
+        ],
+      },
+      {
+        type: 'group',
+        label: 'Система',
+        children: [{ key: '/settings', icon: <SettingOutlined />, label: 'Налаштування' }],
+      },
+    ],
+    [personnelCount, collapsed]
+  )
+
   const onMenuClick: MenuProps['onClick'] = ({ key }) => {
-    if (key.startsWith('/')) {
-      navigate(key)
-    }
+    if (key.startsWith('/')) navigate(key)
   }
+
+  const currentTitle = getCurrentTitle(location.pathname)
+  const sidebarWidth = collapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_W
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider
-        collapsible
         collapsed={collapsed}
-        onCollapse={setCollapsed}
-        width={230}
-        theme={isDark ? 'dark' : 'light'}
+        collapsedWidth={SIDEBAR_COLLAPSED_W}
+        width={SIDEBAR_W}
+        trigger={null}
         style={{
           height: '100vh',
           position: 'fixed',
           left: 0,
           top: 0,
           bottom: 0,
-          borderRight: `1px solid ${token.colorBorderSecondary}`,
+          borderRight: '1px solid var(--line-1)',
           display: 'flex',
-          flexDirection: 'column'
+          flexDirection: 'column',
+          zIndex: 5,
         }}
       >
+        {/* Brand */}
         <div
           style={{
-            height: 48,
+            height: HEADER_H,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: collapsed ? 0 : '0 14px',
+            justifyContent: collapsed ? 'center' : 'flex-start',
+            borderBottom: '1px solid var(--line-1)',
+            flexShrink: 0,
+          }}
+        >
+          <BrandMark />
+          {!collapsed && (
+            <div
+              style={{
+                fontWeight: 600,
+                fontSize: 13,
+                letterSpacing: '0.02em',
+                whiteSpace: 'nowrap',
+                display: 'flex',
+                alignItems: 'baseline',
+                gap: 5,
+              }}
+            >
+              ALVARES
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 10,
+                  color: 'var(--accent)',
+                  letterSpacing: '0.1em',
+                }}
+              >
+                AI
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Nav */}
+        <div style={{ flex: 1, overflow: 'auto', padding: '4px 0 8px' }}>
+          <Menu
+            mode="inline"
+            inlineCollapsed={collapsed}
+            selectedKeys={[location.pathname]}
+            items={menuItems}
+            onClick={onMenuClick}
+            style={{ borderRight: 0, background: 'transparent' }}
+          />
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            padding: collapsed ? '10px 0' : '10px 14px',
+            borderTop: '1px solid var(--line-1)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: collapsed ? 'center' : 'flex-start',
-            padding: collapsed ? 0 : '0 16px',
-            gap: 8,
+            gap: 10,
+            fontSize: 11,
+            color: 'var(--fg-3)',
             flexShrink: 0,
-            borderBottom: `1px solid ${token.colorBorderSecondary}`
           }}
         >
-          <DatabaseOutlined style={{ fontSize: 22, color: token.colorPrimary }} />
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              background: dbStatus === 'OK' ? 'var(--ok)' : 'var(--crit)',
+              flexShrink: 0,
+            }}
+          />
           {!collapsed && (
-            <span style={{ fontSize: 16, fontWeight: 600 }}>АльваресAI</span>
+            <div style={{ minWidth: 0, lineHeight: 1.3 }}>
+              <div style={{ fontSize: 11, color: 'var(--fg-1)', fontWeight: 500 }}>
+                {dbStatus === 'OK' ? 'БД синхронізована' : 'БД недоступна'}
+              </div>
+              <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}>
+                v{appVersion} · локально
+              </div>
+            </div>
           )}
         </div>
-        <div style={{ flex: 1, overflow: 'auto' }}>
-          <Menu
-            mode="inline"
-            selectedKeys={[location.pathname]}
-            defaultOpenKeys={findOpenKey(location.pathname)}
-            items={menuItems}
-            onClick={onMenuClick}
-            style={{ borderRight: 0 }}
-          />
-        </div>
-        {appVersion && (
-          <div
-            style={{
-              padding: collapsed ? '8px 0' : '8px 16px',
-              textAlign: 'center',
-              fontSize: 11,
-              color: token.colorTextQuaternary,
-              borderTop: `1px solid ${token.colorBorderSecondary}`,
-              flexShrink: 0
-            }}
-          >
-            {collapsed ? `v${appVersion}` : `АльваресAI v${appVersion}`}
-          </div>
-        )}
       </Sider>
 
-      <Layout style={{ marginLeft: collapsed ? 80 : 230, transition: 'margin-left 0.2s', height: '100vh', overflow: 'hidden' }}>
+      <Layout
+        style={{
+          marginLeft: sidebarWidth,
+          transition: 'margin-left 0.16s ease',
+          height: '100vh',
+          overflow: 'hidden',
+        }}
+      >
         <Header
           style={{
-            padding: '0 24px',
-            background: token.colorBgContainer,
+            padding: 0,
+            height: HEADER_H,
             display: 'flex',
             alignItems: 'center',
-            borderBottom: `1px solid ${token.colorBorderSecondary}`,
-            position: 'sticky',
-            top: 0,
-            zIndex: 10,
-            height: 48
+            gap: 12,
+            paddingLeft: 12,
+            paddingRight: 12,
+            borderBottom: '1px solid var(--line-1)',
+            flexShrink: 0,
           }}
         >
-          <div
+          {/* Toggle */}
+          <button
             onClick={() => setCollapsed(!collapsed)}
-            style={{ fontSize: 16, cursor: 'pointer', marginRight: 16, color: token.colorTextSecondary }}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 4,
+              border: 0,
+              background: 'transparent',
+              cursor: 'pointer',
+              color: 'var(--fg-2)',
+              display: 'grid',
+              placeItems: 'center',
+            }}
+            title={collapsed ? 'Розгорнути' : 'Згорнути'}
           >
             {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+          </button>
+
+          {/* Breadcrumbs */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 12.5,
+              color: 'var(--fg-2)',
+            }}
+          >
+            <HomeOutlined style={{ fontSize: 14, color: 'var(--fg-3)' }} />
+            <RightOutlined style={{ fontSize: 10, color: 'var(--fg-4)' }} />
+            <span>4 ШБ / 92 ОШБр</span>
+            <RightOutlined style={{ fontSize: 10, color: 'var(--fg-4)' }} />
+            <span style={{ color: 'var(--fg-0)', fontWeight: 500 }}>{currentTitle}</span>
           </div>
-          <Space size={8}>
-            <HomeOutlined style={{ color: token.colorTextSecondary }} />
-            <Tag color="blue" style={{ fontSize: 13, padding: '2px 10px', margin: 0 }}>
-              Г-3 — 12 штурмова рота
-            </Tag>
-          </Space>
+
+          <div className="unit-pill">
+            <span className="dot" />
+            Г-3 · 12 ШР
+          </div>
+
           <div style={{ flex: 1 }} />
-          <Space size={8}>
-            <span style={{ color: token.colorTextSecondary, fontSize: 13 }}>
-              {dayjs().format('DD.MM.YYYY dddd')}
-            </span>
-            {dbStatus && (
-              <Tag color={dbStatus === 'OK' ? 'success' : 'error'}>БД: {dbStatus}</Tag>
-            )}
-            <Tooltip title={isDark ? 'Світла тема' : 'Темна тема'}>
-              <div
-                onClick={toggleTheme}
-                style={{
-                  fontSize: 16,
-                  cursor: 'pointer',
-                  color: token.colorTextSecondary,
-                  display: 'flex',
-                  alignItems: 'center'
-                }}
-              >
-                {isDark ? <SunOutlined /> : <MoonOutlined />}
-              </div>
-            </Tooltip>
-          </Space>
+
+          {/* Search */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              background: 'var(--bg-2)',
+              border: '1px solid var(--line-1)',
+              borderRadius: 5,
+              padding: '0 10px',
+              width: 280,
+              height: 28,
+              color: 'var(--fg-2)',
+            }}
+          >
+            <SearchOutlined style={{ fontSize: 13 }} />
+            <Input
+              placeholder="Пошук позивного, ПІБ, посади…"
+              variant="borderless"
+              size="small"
+              style={{ padding: 0, fontSize: 12, color: 'var(--fg-1)', flex: 1 }}
+            />
+            <span className="kbd">⌘K</span>
+          </div>
+
+          {/* Actions */}
+          <Tooltip title="Сповіщення">
+            <button
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 4,
+                border: 0,
+                background: 'transparent',
+                cursor: 'pointer',
+                color: 'var(--fg-2)',
+                display: 'grid',
+                placeItems: 'center',
+              }}
+            >
+              <BellOutlined />
+            </button>
+          </Tooltip>
+
+          <Tooltip title={isDark ? 'Світла тема' : 'Темна тема'}>
+            <button
+              onClick={toggleTheme}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 4,
+                border: 0,
+                background: 'transparent',
+                cursor: 'pointer',
+                color: 'var(--fg-2)',
+                display: 'grid',
+                placeItems: 'center',
+              }}
+            >
+              {isDark ? <SunOutlined /> : <MoonOutlined />}
+            </button>
+          </Tooltip>
+
+          <div
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: 'var(--fg-3)',
+              padding: '0 6px',
+              borderLeft: '1px solid var(--line-1)',
+              marginLeft: 4,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {dayjs().format('dd · DD.MM.YYYY')}
+          </div>
         </Header>
 
-        <Content style={{ margin: 16, overflow: 'auto', flex: 1 }}>
+        <Content
+          style={{
+            overflow: 'auto',
+            flex: 1,
+            background: 'var(--bg-0)',
+            padding: '16px 20px 40px',
+          }}
+        >
           <AppRoutes />
         </Content>
       </Layout>

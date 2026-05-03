@@ -119,21 +119,19 @@ export default function StaffingTable(): JSX.Element {
 
   return (
     <div>
-      {/* Header */}
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-          <Space>
-            <FileTextOutlined style={{ fontSize: 20 }} />
-            <Title level={4} style={{ margin: 0 }}>
-              Штатно-посадовий облік
-            </Title>
-          </Space>
-        </Space>
-      </Card>
+      <div className="page-header">
+        <div className="titles">
+          <div className="eyebrow">штат · посадовий облік</div>
+          <h1>ШПО — Штатно-посадовий облік</h1>
+          <div className="sub">
+            Штат: {totalStaff} · Факт: {totalFilled} · Вакантних: {totalVacant} · Заповнено {totalPercent}%
+          </div>
+        </div>
+      </div>
 
-      {/* Summary */}
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Space size="large">
+      {/* Прогрес-картка */}
+      <div className="card" style={{ padding: 14, marginBottom: 12 }}>
+        <Space size="large" wrap>
           <Space>
             <TeamOutlined />
             <Text strong>Загальна укомплектованість:</Text>
@@ -148,7 +146,7 @@ export default function StaffingTable(): JSX.Element {
             strokeColor={totalPercent >= 80 ? '#52c41a' : totalPercent >= 50 ? '#faad14' : '#ff4d4f'}
           />
         </Space>
-      </Card>
+      </div>
 
       {/* Groups */}
       {groups.map((group) => (

@@ -209,13 +209,18 @@ export default function LeaveRecords(): JSX.Element {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={3} style={{ margin: 0 }}>
-          <CalendarOutlined /> Відпустки
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setDrawerOpen(true)}>
-          Нова відпустка
-        </Button>
+      <div className="page-header">
+        <div className="titles">
+          <div className="eyebrow">документи · відпустки</div>
+          <h1>Відпустки</h1>
+          <div className="sub">Облік основних, додаткових та сімейних відпусток</div>
+        </div>
+        <div className="actions">
+          <button className="btn primary" onClick={() => setDrawerOpen(true)}>
+            <PlusOutlined />
+            Нова відпустка
+          </button>
+        </div>
       </div>
 
       <Space style={{ marginBottom: 16 }}>

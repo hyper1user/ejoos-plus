@@ -101,6 +101,14 @@ export default function Settings(): JSX.Element {
   }
 
   return (
+    <>
+      <div className="page-header">
+        <div className="titles">
+          <div className="eyebrow">система · конфігурація</div>
+          <h1>Налаштування</h1>
+          <div className="sub">Оновлення, інтеграції, папка документів, тема</div>
+        </div>
+      </div>
     <Space direction="vertical" size={24} style={{ width: '100%' }}>
 
       {/* Updater */}
@@ -199,5 +207,6 @@ export default function Settings(): JSX.Element {
         </Paragraph>
       </Card>
     </Space>
+    </>
   )
 }

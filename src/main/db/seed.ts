@@ -224,7 +224,7 @@ export function seedDatabase(db: BetterSQLite3Database): void {
 
   // Налаштування
   const defaultSettings = {
-    unit_name: '12 ОШР "Хижаки"',
+    unit_name: '12 ШР "Хижаки"',
     unit_designation: 'в/ч А0501',
     parent_unit: '92 ОШБр ім. кошового отамана Івана Сірка',
     brigade_designation: 'в/ч А1314',

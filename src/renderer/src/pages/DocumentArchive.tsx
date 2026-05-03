@@ -121,9 +121,13 @@ export default function DocumentArchive(): JSX.Element {
 
   return (
     <div>
-      <Title level={3} style={{ marginBottom: 16 }}>
-        <FolderOpenOutlined /> Архів документів
-      </Title>
+      <div className="page-header">
+        <div className="titles">
+          <div className="eyebrow">документи · архів</div>
+          <h1>Архів документів</h1>
+          <div className="sub">Згенеровані документи · накази · рапорти</div>
+        </div>
+      </div>
 
       <Space style={{ marginBottom: 16 }}>
         <Input

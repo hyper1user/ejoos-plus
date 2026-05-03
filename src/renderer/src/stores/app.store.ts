@@ -19,7 +19,7 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set) => ({
   currentMonth: dayjs().format('YYYY-MM'),
-  unitName: '12 ОШР "Хижаки"',
+  unitName: '12 ШР "Хижаки"',
   dbConnected: false,
   sidebarCollapsed: false,
   globalSubdivision: HOME_SUBDIVISION,

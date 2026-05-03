@@ -1,210 +1,322 @@
-import { useState, useMemo } from 'react'
-import { Card, Tree, Space, Tag, Typography, Progress, Table, Empty, Spin } from 'antd'
-import { ApartmentOutlined, TeamOutlined, IdcardOutlined } from '@ant-design/icons'
-import { useSubdivisionTree, usePositionList } from '../hooks/usePositions'
-import SubdivisionCard from '../components/positions/SubdivisionCard'
-import type { SubdivisionTreeNode, PositionListItem } from '@shared/types/position'
+import { useEffect, useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Spin, Empty } from 'antd'
+import { PrinterOutlined, EditOutlined, TeamOutlined } from '@ant-design/icons'
+import type { SubdivisionTreeNode } from '@shared/types/position'
+import type { PersonnelListItem } from '@shared/types/personnel'
+import { useSubdivisionTree } from '../hooks/usePositions'
+import { usePersonnelList } from '../hooks/usePersonnel'
+import { useAppStore } from '../stores/app.store'
 
-const { Title, Text } = Typography
-
-// Convert SubdivisionTreeNode to Ant Design Tree data
-function toTreeData(
-  nodes: SubdivisionTreeNode[]
-): { key: string; title: React.ReactNode; children: ReturnType<typeof toTreeData>; data: SubdivisionTreeNode }[] {
-  return nodes.map((node) => ({
-    key: String(node.id),
-    title: (
-      <Space>
-        <Tag color="blue">{node.code}</Tag>
-        <Text strong>{node.name}</Text>
-        <Text type="secondary">
-          (ОС: {node.personnelCount} / Посад: {node.positionCount}
-          {node.vacantCount > 0 ? ` / Вакантних: ${node.vacantCount}` : ''})
-        </Text>
-      </Space>
-    ),
-    children: toTreeData(node.children),
-    data: node
-  }))
-}
-
-// Flatten tree to find node by id
-function findNode(nodes: SubdivisionTreeNode[], id: number): SubdivisionTreeNode | null {
-  for (const node of nodes) {
-    if (node.id === id) return node
-    const found = findNode(node.children, id)
+function findByCode(nodes: SubdivisionTreeNode[], code: string): SubdivisionTreeNode | null {
+  for (const n of nodes) {
+    if (n.code === code) return n
+    const found = findByCode(n.children, code)
     if (found) return found
   }
   return null
 }
 
+function callsignInitials(callsign: string | null): string {
+  if (!callsign) return '—'
+  return callsign.slice(0, 3).toUpperCase()
+}
+
 export default function OrgStructure(): JSX.Element {
+  const navigate = useNavigate()
+  const globalSubdivision = useAppStore((s) => s.globalSubdivision)
   const { data: treeData, loading: treeLoading } = useSubdivisionTree()
-  const [selectedSubId, setSelectedSubId] = useState<number | null>(null)
+  const { data: personnel } = usePersonnelList({
+    subdivision: globalSubdivision,
+    status: 'active',
+  })
 
-  const selectedNode = useMemo(
-    () => (selectedSubId ? findNode(treeData, selectedSubId) : null),
-    [treeData, selectedSubId]
-  )
-
-  // Fetch positions for selected subdivision
-  const { data: positionData, loading: posLoading } = usePositionList(
-    selectedSubId ? { subdivisionId: selectedSubId } : {}
-  )
-
-  // Знайти вузол Г-3 (наш підрозділ) та показати лише його
-  const filteredTree = useMemo(() => {
-    const findByCode = (nodes: SubdivisionTreeNode[], code: string): SubdivisionTreeNode | null => {
-      for (const n of nodes) {
-        if (n.code === code) return n
-        const found = findByCode(n.children, code)
-        if (found) return found
-      }
-      return null
-    }
+  const root = useMemo(() => {
     const g3 = findByCode(treeData, 'Г-3')
-    return g3 ? [g3] : treeData
+    return g3 ?? treeData[0] ?? null
   }, [treeData])
 
-  // Summary totals лише по Г-3 та її дочірніх
-  const allNodes = useMemo(() => {
-    const flat: SubdivisionTreeNode[] = []
-    const traverse = (nodes: SubdivisionTreeNode[]) => {
-      for (const n of nodes) {
-        flat.push(n)
-        traverse(n.children)
-      }
+  const children = root?.children ?? []
+  const totalPersonnel = root?.personnelCount ?? personnel.length
+  const totalPositions = root?.positionCount ?? 0
+  const totalVacant = root?.vacantCount ?? 0
+  const fillPercent =
+    totalPositions > 0
+      ? Math.round(((totalPositions - totalVacant) / totalPositions) * 100)
+      : 0
+
+  // personnel grouped by subdivision code
+  const personnelBySub = useMemo(() => {
+    const m = new Map<string, PersonnelListItem[]>()
+    for (const p of personnel) {
+      const k = p.currentSubdivision || ''
+      if (!m.has(k)) m.set(k, [])
+      m.get(k)!.push(p)
     }
-    traverse(filteredTree)
-    return flat
-  }, [filteredTree])
-
-  const totalPersonnel = allNodes.reduce((s, n) => s + n.personnelCount, 0)
-  const totalPositions = allNodes.reduce((s, n) => s + n.positionCount, 0)
-  const totalVacant = allNodes.reduce((s, n) => s + n.vacantCount, 0)
-  const fillPercent = totalPositions > 0 ? Math.round(((totalPositions - totalVacant) / totalPositions) * 100) : 0
-
-  const antTreeData = useMemo(() => toTreeData(filteredTree), [filteredTree])
-
-  const handleSelect = (keys: React.Key[]) => {
-    const key = keys[0]
-    setSelectedSubId(key ? Number(key) : null)
-  }
-
-  const posColumns = [
-    { title: 'Індекс', dataIndex: 'positionIndex', width: 100 },
-    { title: 'Посада', dataIndex: 'title', ellipsis: true },
-    {
-      title: 'Особа',
-      key: 'occupant',
-      width: 280,
-      render: (_: unknown, r: PositionListItem) => {
-        if (!r.isActive)
-          return (
-            <Text delete type="secondary">
-              Деактивована
-            </Text>
-          )
-        if (!r.occupantId) return <Tag color="orange">ВАКАНТНА</Tag>
-        return (
-          <Space size={4}>
-            <Tag color="green">{r.occupantRank}</Tag>
-            <span>{r.occupantName}</span>
-          </Space>
-        )
-      }
-    }
-  ]
+    return m
+  }, [personnel])
 
   if (treeLoading) {
     return (
-      <Card style={{ textAlign: 'center', padding: 40 }}>
+      <div style={{ display: 'grid', placeItems: 'center', padding: 60 }}>
         <Spin size="large" />
-      </Card>
+      </div>
+    )
+  }
+
+  if (!root) {
+    return (
+      <>
+        <div className="page-header">
+          <div className="titles">
+            <h1>Структура 12 ШР</h1>
+          </div>
+        </div>
+        <div className="card" style={{ padding: 40 }}>
+          <Empty description="Підрозділ Г-3 не знайдено" />
+        </div>
+      </>
     )
   }
 
   return (
-    <div style={{ display: 'flex', gap: 16, height: '100%' }}>
-      {/* Left panel: Tree */}
-      <div style={{ width: 420, flexShrink: 0 }}>
-        {/* Unit summary card */}
-        <Card size="small" style={{ marginBottom: 12 }}>
-          <Space direction="vertical" size={4} style={{ width: '100%' }}>
-            <Space>
-              <ApartmentOutlined style={{ fontSize: 18 }} />
-              <Title level={5} style={{ margin: 0 }}>
-                12 штурмова рота
-              </Title>
-            </Space>
-            <Space size="large">
-              <Space size={4}>
-                <TeamOutlined />
-                <Text>ОС: {totalPersonnel}</Text>
-              </Space>
-              <Space size={4}>
-                <IdcardOutlined />
-                <Text>Посад: {totalPositions}</Text>
-              </Space>
-              {totalVacant > 0 && <Tag color="orange">Вакантних: {totalVacant}</Tag>}
-            </Space>
-            {totalPositions > 0 && (
-              <Progress
-                percent={fillPercent}
-                size="small"
-                strokeColor={
-                  fillPercent >= 80 ? '#52c41a' : fillPercent >= 50 ? '#faad14' : '#ff4d4f'
-                }
-                format={() => `${totalPositions - totalVacant}/${totalPositions}`}
-              />
-            )}
-          </Space>
-        </Card>
-
-        {/* Tree */}
-        <Card size="small" title="Підрозділи" style={{ overflow: 'auto' }}>
-          <Tree
-            treeData={antTreeData}
-            defaultExpandAll
-            selectedKeys={selectedSubId ? [String(selectedSubId)] : []}
-            onSelect={handleSelect}
-            blockNode
-          />
-        </Card>
+    <>
+      <div className="page-header">
+        <div className="titles">
+          <div className="eyebrow">
+            організаційна структура · {children.length} підрозділ{children.length === 1 ? '' : 'ів'}
+          </div>
+          <h1>Структура 12 ШР</h1>
+          <div className="sub">
+            ОС: {totalPersonnel} · Посад: {totalPositions} · Заповнено {fillPercent}%
+          </div>
+        </div>
+        <div className="actions">
+          <button className="btn" onClick={() => navigate('/staff-roster')}>
+            <PrinterOutlined />
+            Штатний розпис
+          </button>
+          <button className="btn primary" onClick={() => navigate('/staffing')}>
+            <EditOutlined />
+            Редагувати ШПО
+          </button>
+        </div>
       </div>
 
-      {/* Right panel: Details */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {selectedNode ? (
+      {/* Діаграма-дерево */}
+      <div className="card" style={{ padding: 30, overflow: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <div className="org-node root" style={{ minWidth: 320, padding: '12px 14px' }}>
+            <TeamOutlined style={{ color: 'var(--accent)', fontSize: 16 }} />
+            <div>
+              <div className="ttl">{root.name}</div>
+              <div className="dim" style={{ fontSize: 10.5, marginTop: 2 }}>
+                {root.code} · {root.fullName || '—'}
+              </div>
+            </div>
+            <span className="ct mono">{totalPersonnel}</span>
+          </div>
+        </div>
+
+        {children.length > 0 && (
           <>
-            <SubdivisionCard node={selectedNode} />
-            <Card
-              size="small"
-              title={`Посади — ${selectedNode.code} ${selectedNode.name}`}
-              style={{ marginTop: 8 }}
+            <div
+              style={{
+                height: 24,
+                position: 'relative',
+                maxWidth: 800,
+                margin: '0 auto',
+              }}
             >
-              <Table
-                columns={posColumns}
-                dataSource={positionData}
-                rowKey="id"
-                size="small"
-                loading={posLoading}
-                pagination={false}
-                rowClassName={(record: PositionListItem) => {
-                  if (!record.isActive) return 'row-deactivated'
-                  if (!record.occupantId) return 'row-vacant'
-                  return ''
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: '50%',
+                  width: 1,
+                  height: 12,
+                  background: 'var(--line-2)',
                 }}
               />
-            </Card>
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 12,
+                  left: `${100 / children.length / 2}%`,
+                  right: `${100 / children.length / 2}%`,
+                  height: 1,
+                  background: 'var(--line-2)',
+                }}
+              />
+              {children.map((_, i) => {
+                const step = 100 / children.length
+                const left = step / 2 + step * i
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      position: 'absolute',
+                      top: 12,
+                      height: 12,
+                      width: 1,
+                      background: 'var(--line-2)',
+                      left: `${left}%`,
+                    }}
+                  />
+                )
+              })}
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${children.length}, 1fr)`,
+                gap: 8,
+                maxWidth: 800,
+                margin: '0 auto',
+              }}
+            >
+              {children.map((c) => {
+                const ct = c.personnelCount || 0
+                const positions = c.positionCount || 0
+                const fill =
+                  positions > 0 ? Math.min(100, Math.round((ct / positions) * 100)) : 0
+                return (
+                  <div
+                    key={c.id}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 6,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <div className="org-node" style={{ width: '100%' }}>
+                      <span className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>
+                        {c.code}
+                      </span>
+                      <div className="ttl" style={{ fontSize: 11.5 }}>
+                        {c.name}
+                      </div>
+                      <span className="ct mono">{ct}</span>
+                    </div>
+                    <div className="bar-track" style={{ width: '70%' }}>
+                      <i style={{ width: `${fill}%` }} />
+                    </div>
+                    <div className="mono dim" style={{ fontSize: 10 }}>
+                      {ct} / {positions} штатних
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </>
-        ) : (
-          <Card style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Empty description="Оберіть підрозділ зліва для перегляду деталей" />
-          </Card>
         )}
       </div>
 
-    </div>
+      {/* Прев'ю по перших 3 підрозділах */}
+      {children.length > 0 && (
+        <div
+          className="hgrid"
+          style={{
+            gridTemplateColumns: `repeat(${Math.min(3, children.length)}, 1fr)`,
+            gap: 12,
+            marginTop: 12,
+          }}
+        >
+          {children.slice(0, 3).map((c) => {
+            const list = personnelBySub.get(c.code) ?? []
+            return (
+              <div key={c.id} className="card">
+                <div className="card-head">
+                  <h3>
+                    {c.code} · {c.name}
+                  </h3>
+                  <span className="meta">{list.length} осіб</span>
+                </div>
+                <div style={{ padding: 0 }}>
+                  {list.length === 0 && (
+                    <div
+                      style={{
+                        padding: 16,
+                        textAlign: 'center',
+                        color: 'var(--fg-3)',
+                        fontSize: 12,
+                      }}
+                    >
+                      Списків немає
+                    </div>
+                  )}
+                  {list.slice(0, 6).map((p, i) => (
+                    <div
+                      key={p.id}
+                      onClick={() => navigate(`/personnel/${p.id}`)}
+                      style={{
+                        padding: '8px 14px',
+                        borderTop: i ? '1px solid var(--line-1)' : 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div className="avatar sm">{callsignInitials(p.callsign)}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 500,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          <span
+                            style={{
+                              color: 'var(--accent)',
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: 11,
+                            }}
+                          >
+                            {p.callsign || '—'}
+                          </span>{' '}
+                          · {p.fullName}
+                        </div>
+                        <div
+                          className="dim"
+                          style={{
+                            fontSize: 10.5,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {p.positionTitle || p.currentPositionIdx || '—'}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {list.length > 6 && (
+                    <div
+                      style={{
+                        padding: '8px 14px',
+                        borderTop: '1px solid var(--line-1)',
+                        fontSize: 11,
+                        color: 'var(--fg-3)',
+                        fontFamily: 'var(--font-mono)',
+                        textAlign: 'center',
+                      }}
+                    >
+                      + ще {list.length - 6}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </>
   )
 }

@@ -64,30 +64,36 @@ export default function DgvPage(): JSX.Element {
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <Title level={4} style={{ margin: 0 }}>
-            <DollarOutlined /> Грошове забезпечення (ДГВ)
-          </Title>
-          <Space>
-            <DatePicker
-              picker="month"
-              value={dayjs(`${year}-${String(month).padStart(2, '0')}-01`)}
-              onChange={handleMonthChange}
-              allowClear={false}
-              format="MMMM YYYY"
-            />
-            <Button
-              type="primary"
-              icon={<FileExcelOutlined />}
-              loading={exporting}
-              onClick={handleExport}
-            >
-              Експорт рапорту
-            </Button>
-          </Space>
+    <>
+      <div className="page-header">
+        <div className="titles">
+          <div className="eyebrow">грошове забезпечення · табель</div>
+          <h1>ДГВ — {dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY')}</h1>
+          <div className="sub">14 кодів нарахування · експорт рапорту .xlsx</div>
         </div>
+        <div className="actions">
+          <DatePicker
+            picker="month"
+            value={dayjs(`${year}-${String(month).padStart(2, '0')}-01`)}
+            onChange={handleMonthChange}
+            allowClear={false}
+            format="MMMM YYYY"
+            size="small"
+          />
+          <button
+            className="btn primary"
+            onClick={handleExport}
+            disabled={exporting}
+          >
+            <FileExcelOutlined />
+            {exporting ? 'Експортую…' : 'Експорт рапорту'}
+          </button>
+        </div>
+      </div>
+      <Card style={{ marginBottom: 0 }}>
+        <span style={{ display: 'none' }}>
+          <DollarOutlined />
+        </span>
 
         {/* Grounds settings */}
         <Collapse
@@ -157,6 +163,6 @@ export default function DgvPage(): JSX.Element {
           </div>
         )}
       </Card>
-    </div>
+    </>
   )
 }

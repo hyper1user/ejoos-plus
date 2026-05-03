@@ -223,7 +223,14 @@ export default function ImportExport(): JSX.Element {
   // ==================== RENDER ====================
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="page-header">
+        <div className="titles">
+          <div className="eyebrow">обмін даними · ЕЖООС / ШПО / Дата</div>
+          <h1>Імпорт / Експорт</h1>
+          <div className="sub">Імпорт із .xlsx (ЕЖООС, Імпульс) · експорт реєстру у CSV/Excel</div>
+        </div>
+      </div>
       {/* Section 1: EJOOS Import */}
       <Card
         title={

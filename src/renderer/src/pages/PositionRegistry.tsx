@@ -145,6 +145,16 @@ export default function PositionRegistry(): JSX.Element {
 
   return (
     <>
+      <div className="page-header">
+        <div className="titles">
+          <div className="eyebrow">штат · перелік посад</div>
+          <h1>Перелік посад</h1>
+          <div className="sub">
+            {total} всього · {occupied} зайнятих · {vacant} вакантних
+            {deactivated > 0 ? ` · ${deactivated} неактивних` : ''}
+          </div>
+        </div>
+      </div>
       <ProTable<PositionListItem>
         columns={columns}
         dataSource={data}
@@ -158,16 +168,6 @@ export default function PositionRegistry(): JSX.Element {
           if (!record.occupantId) return 'row-vacant'
           return ''
         }}
-        headerTitle={
-          <Space>
-            <BankOutlined />
-            <span>Перелік посад</span>
-            <Tag>{total} всього</Tag>
-            <Tag color="green">{occupied} зайнятих</Tag>
-            <Tag color="orange">{vacant} вакантних</Tag>
-            {deactivated > 0 && <Tag>{deactivated} неактивних</Tag>}
-          </Space>
-        }
         toolbar={{
           actions: [
             <Input.Search

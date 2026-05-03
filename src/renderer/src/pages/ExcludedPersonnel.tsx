@@ -109,30 +109,40 @@ export default function ExcludedPersonnel() {
   ]
 
   return (
-    <ProTable<PersonnelListItem>
-      rowKey="id"
-      columns={columns}
-      dataSource={data}
-      loading={loading}
-      search={false}
-      dateFormatter="string"
-      scroll={{ x: 1100 }}
-      pagination={{
-        defaultPageSize: 50,
-        showSizeChanger: true,
-        showTotal: (total) => `Всього: ${total}`
-      }}
-      headerTitle="Виключені з особового складу"
-      toolbar={{
-        search: (
-          <Input.Search
-            placeholder="Пошук за ПІБ, ІПН..."
-            allowClear
-            onSearch={(val) => setSearch(val)}
-            style={{ width: 300 }}
-          />
-        )
-      }}
-    />
+    <>
+      <div className="page-header">
+        <div className="titles">
+          <div className="eyebrow">особовий склад · виключені</div>
+          <h1>Виключені з особового складу</h1>
+          <div className="sub">{data.length} записів</div>
+        </div>
+      </div>
+      <div className="card" style={{ padding: 14 }}>
+        <ProTable<PersonnelListItem>
+          rowKey="id"
+          columns={columns}
+          dataSource={data}
+          loading={loading}
+          search={false}
+          dateFormatter="string"
+          scroll={{ x: 1100 }}
+          pagination={{
+            defaultPageSize: 50,
+            showSizeChanger: true,
+            showTotal: (total) => `Всього: ${total}`
+          }}
+          toolbar={{
+            search: (
+              <Input.Search
+                placeholder="Пошук за ПІБ, ІПН..."
+                allowClear
+                onSearch={(val) => setSearch(val)}
+                style={{ width: 300 }}
+              />
+            )
+          }}
+        />
+      </div>
+    </>
   )
 }

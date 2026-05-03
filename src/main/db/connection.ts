@@ -555,6 +555,10 @@ function createTables(sqliteDb: InstanceType<typeof Database>): void {
   // v0.7.1: fix personnel whose active movement is "В розпорядження"
   // but currentSubdivision was never updated
   fixDispositionSubdivisions(sqliteDb)
+
+  // v0.8.1: rename unit "12 ОШР" → "12 ШР" in settings (correct abbreviation
+  // for "штурмова рота" — not "окрема штурмова рота")
+  fixUnitNameOshrToShr(sqliteDb)
 }
 
 function migratePersonnel(sqliteDb: InstanceType<typeof Database>): void {
@@ -622,5 +626,17 @@ function fixDispositionSubdivisions(sqliteDb: InstanceType<typeof Database>): vo
   const changes = sqliteDb.prepare('SELECT changes() as cnt').get() as { cnt: number }
   if (changes.cnt > 0) {
     console.log(`[db] fixDispositionSubdivisions: виправлено ${changes.cnt} записів`)
+  }
+}
+
+function fixUnitNameOshrToShr(sqliteDb: InstanceType<typeof Database>): void {
+  sqliteDb.exec(`
+    UPDATE settings
+    SET value = '12 ШР "Хижаки"'
+    WHERE key = 'unit_name' AND value = '12 ОШР "Хижаки"'
+  `)
+  const changes = sqliteDb.prepare('SELECT changes() as cnt').get() as { cnt: number }
+  if (changes.cnt > 0) {
+    console.log(`[db] fixUnitNameOshrToShr: оновлено settings.unit_name на "12 ШР"`)
   }
 }
