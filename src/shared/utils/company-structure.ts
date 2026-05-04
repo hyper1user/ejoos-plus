@@ -12,7 +12,7 @@ import type { SubdivisionTreeNode } from '../types/position'
 // або додавання Г-3.1..Г-3.5 до `subdivisions` + переприв'язка posіtions,
 // або проштовхування `getPlatoonCodeForPerson` у бекенд-фільтри.
 
-export type PlatoonCode = 'Г-3.1' | 'Г-3.2' | 'Г-3.3' | 'Г-3.4' | 'Г-3.5'
+export type PlatoonCode = 'Г-3.1' | 'Г-3.2' | 'Г-3.3' | 'Г-3.4' | 'Г-3.5' | 'Г-3.6'
 
 export interface PlatoonInfo {
   code: PlatoonCode
@@ -35,7 +35,8 @@ export const PLATOONS: PlatoonInfo[] = [
   { code: 'Г-3.2', name: '1 штурмовий взвод',   fullName: '1 штурмовий взвод 12 ШР',   sortOrder: 2, rangeBased: true,  range: { from: 12, to: 45  }, positionCount: 34 },
   { code: 'Г-3.3', name: '2 штурмовий взвод',   fullName: '2 штурмовий взвод 12 ШР',   sortOrder: 3, rangeBased: true,  range: { from: 46, to: 79  }, positionCount: 34 },
   { code: 'Г-3.4', name: '3 штурмовий взвод',   fullName: '3 штурмовий взвод 12 ШР',   sortOrder: 4, rangeBased: true,  range: { from: 80, to: 113 }, positionCount: 34 },
-  { code: 'Г-3.5', name: 'Розпорядження',       fullName: 'У розпорядженні командира', sortOrder: 5, rangeBased: false, positionCount: 0 }
+  { code: 'Г-3.5', name: 'Розпорядження',       fullName: 'У розпорядженні командира', sortOrder: 5, rangeBased: false, positionCount: 0 },
+  { code: 'Г-3.6', name: 'Виключені',           fullName: 'Виключені зі списків',      sortOrder: 6, rangeBased: false, positionCount: 0 }
 ]
 
 const COMPANY_TOTAL_POSITIONS = 113
@@ -54,11 +55,16 @@ export function getPlatoonCodeForPosition(positionIndex: string | null | undefin
 }
 
 interface PersonForTree {
+  status?: string | null
   currentSubdivision?: string | null
   currentPositionIdx?: string | null
 }
 
+// Пріоритет правил: excluded > розпорядження > range-based positionIdx.
+// Excluded мають окремий 6-й вузол, незалежно від того, що залишилось у current_*
+// (бо при виключенні current_* поля зберігаються як «останній відомий стан»).
 export function getPlatoonCodeForPerson(person: PersonForTree): PlatoonCode | null {
+  if (person.status === 'excluded') return 'Г-3.6'
   if (person.currentSubdivision === 'розпорядження') return 'Г-3.5'
   return getPlatoonCodeForPosition(person.currentPositionIdx)
 }
@@ -69,7 +75,8 @@ export function buildCompanyTree(personnel: PersonForTree[]): SubdivisionTreeNod
     'Г-3.2': 0,
     'Г-3.3': 0,
     'Г-3.4': 0,
-    'Г-3.5': 0
+    'Г-3.5': 0,
+    'Г-3.6': 0
   }
   for (const p of personnel) {
     const platoon = getPlatoonCodeForPerson(p)
@@ -90,6 +97,11 @@ export function buildCompanyTree(personnel: PersonForTree[]): SubdivisionTreeNod
     vacantCount: Math.max(0, p.positionCount - counts[p.code])
   }))
 
+  // Root «12 ШР» — лічильник у штаті (active в роті + розпорядження),
+  // БЕЗ виключених. Виключені рахуються тільки у власному 6-му вузлі.
+  const inStaffCount =
+    counts['Г-3.1'] + counts['Г-3.2'] + counts['Г-3.3'] + counts['Г-3.4'] + counts['Г-3.5']
+
   return {
     id: 0,
     code: 'Г-3',
@@ -99,8 +111,8 @@ export function buildCompanyTree(personnel: PersonForTree[]): SubdivisionTreeNod
     sortOrder: 3,
     isActive: true,
     children,
-    personnelCount: personnel.length,
+    personnelCount: inStaffCount,
     positionCount: COMPANY_TOTAL_POSITIONS,
-    vacantCount: Math.max(0, COMPANY_TOTAL_POSITIONS - personnel.length)
+    vacantCount: Math.max(0, COMPANY_TOTAL_POSITIONS - inStaffCount)
   }
 }

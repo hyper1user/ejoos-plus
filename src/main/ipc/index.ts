@@ -1326,6 +1326,27 @@ export function registerIpcHandlers(): void {
 
   // ==================== ATTENDANCE ====================
 
+  // Локальна сьогоднішня дата у форматі YYYY-MM-DD (без UTC-зсуву)
+  const todayLocalIso = (): string => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  // Якщо date === today — синхронізувати personnel.currentStatusCode з табелю.
+  // Минулі/майбутні дати не зачіпають поточний статус ОС.
+  const syncCurrentStatusIfToday = (
+    db: ReturnType<typeof getDatabase>,
+    personnelId: number,
+    date: string,
+    statusCode: string
+  ): void => {
+    if (date !== todayLocalIso()) return
+    db.update(personnel)
+      .set({ currentStatusCode: statusCode, updatedAt: sql`(strftime('%Y-%m-%d %H:%M:%f','now'))` })
+      .where(eq(personnel.id, personnelId))
+      .run()
+  }
+
   // Get month attendance grid
   safeHandle(
     IPC.ATTENDANCE_GET_MONTH,
@@ -1423,6 +1444,9 @@ export function registerIpcHandlers(): void {
           .run()
       }
 
+      // Sync personnel.currentStatusCode якщо це сьогоднішня дата
+      syncCurrentStatusIfToday(db, personnelId, date, statusCode)
+
       // Audit log
       db.insert(auditLog)
         .values({
@@ -1499,6 +1523,208 @@ export function registerIpcHandlers(): void {
 
     return result
   })
+
+  // Bulk-set many attendance cells in one transaction (для drag-fill, paint-mode)
+  safeHandle(
+    IPC.ATTENDANCE_BULK_SET,
+    (
+      _event,
+      items: Array<{ personnelId: number; date: string; statusCode: string }>
+    ) => {
+      const db = getDatabase()
+
+      if (items.length === 0) return { ok: true, written: 0 }
+
+      // Pre-fetch presenceGroup для всіх унікальних statusCode
+      const uniqueCodes = Array.from(new Set(items.map((i) => i.statusCode)))
+      const stRows = db
+        .select({ code: statusTypes.code, groupName: statusTypes.groupName })
+        .from(statusTypes)
+        .all()
+      const stMap = new Map(stRows.map((s) => [s.code, s.groupName]))
+
+      // Validate: всі statusCode мають існувати
+      const unknown = uniqueCodes.filter((c) => !stMap.has(c))
+      if (unknown.length > 0) {
+        throw new Error(`Невідомі статуси: ${unknown.join(', ')}`)
+      }
+
+      const today = todayLocalIso()
+
+      const result = db.transaction(() => {
+        let written = 0
+        // Збираємо унікальні (personnelId, statusCode) пари для today —
+        // якщо користувач за один drag поставив кілька днів сьогодні,
+        // currentStatusCode достатньо оновити останнім значенням (з останнього item на today)
+        const todaySync = new Map<number, string>()
+
+        for (const it of items) {
+          const presenceGroup = stMap.get(it.statusCode) ?? null
+          const existing = db
+            .select({ id: attendance.id })
+            .from(attendance)
+            .where(
+              and(
+                eq(attendance.personnelId, it.personnelId),
+                eq(attendance.date, it.date)
+              )
+            )
+            .get()
+          if (existing) {
+            db.update(attendance)
+              .set({ statusCode: it.statusCode, presenceGroup })
+              .where(eq(attendance.id, existing.id))
+              .run()
+          } else {
+            db.insert(attendance)
+              .values({
+                personnelId: it.personnelId,
+                date: it.date,
+                statusCode: it.statusCode,
+                presenceGroup
+              })
+              .run()
+          }
+          written++
+          if (it.date === today) {
+            todaySync.set(it.personnelId, it.statusCode)
+          }
+        }
+
+        // Sync personnel.currentStatusCode для тих, кому сьогодні поставили
+        for (const [pid, code] of todaySync) {
+          db.update(personnel)
+            .set({
+              currentStatusCode: code,
+              updatedAt: sql`(strftime('%Y-%m-%d %H:%M:%f','now'))`
+            })
+            .where(eq(personnel.id, pid))
+            .run()
+        }
+
+        return { written, syncedCurrentStatus: todaySync.size }
+      })
+
+      // Audit log — один запис на batch
+      db.insert(auditLog)
+        .values({
+          tableName: 'attendance',
+          recordId: 0,
+          action: 'bulk-set',
+          newValues: JSON.stringify({
+            count: result.written,
+            uniqueCodes,
+            sample: items.slice(0, 3)
+          })
+        })
+        .run()
+
+      return { ok: true, written: result.written }
+    }
+  )
+
+  // Copy attendance from one date to another (within Г-3 active personnel)
+  safeHandle(
+    IPC.ATTENDANCE_COPY_DAY,
+    (_event, srcDate: string, dstDate: string, overwrite: boolean) => {
+      const db = getDatabase()
+
+      const result = db.transaction(() => {
+        // Source: позначки за srcDate тільки для active Г-3 ОС
+        const srcRows = db
+          .select({
+            personnelId: attendance.personnelId,
+            statusCode: attendance.statusCode,
+            presenceGroup: attendance.presenceGroup
+          })
+          .from(attendance)
+          .innerJoin(personnel, eq(attendance.personnelId, personnel.id))
+          .where(
+            and(
+              eq(attendance.date, srcDate),
+              eq(personnel.status, 'active'),
+              eq(personnel.currentSubdivision, 'Г-3')
+            )
+          )
+          .all()
+
+        if (srcRows.length === 0) {
+          return { copied: 0, skipped: 0, srcCount: 0 }
+        }
+
+        // Destination: існуючі позначки за dstDate (для рішення overwrite/skip)
+        const dstRows = db
+          .select({
+            id: attendance.id,
+            personnelId: attendance.personnelId
+          })
+          .from(attendance)
+          .where(eq(attendance.date, dstDate))
+          .all()
+        const dstByPerson = new Map(dstRows.map((r) => [r.personnelId, r.id]))
+
+        let copied = 0
+        let skipped = 0
+        const isDstToday = dstDate === todayLocalIso()
+        const todaySync = new Map<number, string>()
+
+        for (const src of srcRows) {
+          const existingId = dstByPerson.get(src.personnelId)
+          if (existingId !== undefined) {
+            if (!overwrite) {
+              skipped++
+              continue
+            }
+            db.update(attendance)
+              .set({ statusCode: src.statusCode, presenceGroup: src.presenceGroup })
+              .where(eq(attendance.id, existingId))
+              .run()
+          } else {
+            db.insert(attendance)
+              .values({
+                personnelId: src.personnelId,
+                date: dstDate,
+                statusCode: src.statusCode,
+                presenceGroup: src.presenceGroup
+              })
+              .run()
+          }
+          copied++
+          if (isDstToday) todaySync.set(src.personnelId, src.statusCode)
+        }
+
+        // Sync personnel.currentStatusCode якщо копіюємо саме НА сьогодні
+        for (const [pid, code] of todaySync) {
+          db.update(personnel)
+            .set({
+              currentStatusCode: code,
+              updatedAt: sql`(strftime('%Y-%m-%d %H:%M:%f','now'))`
+            })
+            .where(eq(personnel.id, pid))
+            .run()
+        }
+
+        return { copied, skipped, srcCount: srcRows.length, syncedCurrentStatus: todaySync.size }
+      })
+
+      // Audit log — один запис на всю операцію
+      db.insert(auditLog)
+        .values({
+          tableName: 'attendance',
+          recordId: 0,
+          action: 'copy-day',
+          newValues: JSON.stringify({
+            srcDate,
+            dstDate,
+            overwrite,
+            ...result
+          })
+        })
+        .run()
+
+      return { ok: true, ...result }
+    }
+  )
 
   // ==================== EXPORT ====================
 

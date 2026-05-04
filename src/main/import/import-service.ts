@@ -97,7 +97,16 @@ export function importEjoos(parsed: ParseResult): ImportResult {
   try {
     db.run(sql`BEGIN TRANSACTION`)
 
-    // 1. Clear existing data (reverse dependency order)
+    // 1. Clear existing data (reverse dependency order — всі дочірні з FK на personnel)
+    db.run(sql`DELETE FROM dgv_marks`)
+    db.run(sql`DELETE FROM order_items`)
+    db.run(sql`DELETE FROM injury_records`)
+    db.run(sql`DELETE FROM leave_records`)
+    db.run(sql`DELETE FROM irrecoverable_losses`)
+    db.run(sql`DELETE FROM dispositions`)
+    db.run(sql`DELETE FROM absences`)
+    db.run(sql`DELETE FROM attendance`)
+    db.run(sql`DELETE FROM rank_history`)
     db.run(sql`DELETE FROM status_history`)
     db.run(sql`DELETE FROM movements`)
     db.run(sql`DELETE FROM personnel`)

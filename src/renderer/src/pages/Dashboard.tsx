@@ -113,6 +113,11 @@ function OrgTreeMini({ tree }: { tree: SubdivisionTreeNode[] }): JSX.Element {
   const maxCount = Math.max(...children.map((c) => c.personnelCount || 0), 1)
 
   const goToPlatoon = (code: string | null) => {
+    if (code === 'Г-3.6') {
+      // Виключені мають окрему сторінку — Реєстр фільтрує лише active.
+      navigate('/personnel/excluded')
+      return
+    }
     if (code) navigate(`/personnel?platoon=${encodeURIComponent(code)}`)
     else navigate('/personnel')
   }
@@ -250,9 +255,10 @@ export default function Dashboard(): JSX.Element {
   // тільки тимчасово без штатної посади). Інших підрозділів у БД немає,
   // тож зайвих ОС не приходить.
   const { data: rotaPersonnel } = usePersonnelList({ status: 'active' })
+  const { data: excludedPersonnel } = usePersonnelList({ status: 'excluded' })
   const tree = useMemo<SubdivisionTreeNode[]>(
-    () => [buildCompanyTree(rotaPersonnel)],
-    [rotaPersonnel]
+    () => [buildCompanyTree([...rotaPersonnel, ...excludedPersonnel])],
+    [rotaPersonnel, excludedPersonnel]
   )
 
   // Агрегація 21 статусу у 6 категорій

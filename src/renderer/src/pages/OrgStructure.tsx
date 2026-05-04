@@ -13,15 +13,20 @@ function callsignInitials(callsign: string | null): string {
 
 export default function OrgStructure(): JSX.Element {
   const navigate = useNavigate()
-  // v0.8.5: без subdivision filter — потрібні і ОС у штаті Г-3, і ті,
-  // у кого `currentSubdivision='розпорядження'` (5-й взвод).
-  const { data: personnel, loading: personnelLoading } = usePersonnelList({
+  // v0.9.2: 6 взводів, включаючи "Виключені" (Г-3.6) — тягнемо active + excluded
+  // окремими запитами (бо backend filter `status` не підтримує OR-семантику).
+  const { data: activePersonnel, loading: personnelLoading } = usePersonnelList({
     status: 'active',
   })
+  const { data: excludedPersonnel } = usePersonnelList({ status: 'excluded' })
+  const personnel = useMemo(
+    () => [...activePersonnel, ...excludedPersonnel],
+    [activePersonnel, excludedPersonnel]
+  )
 
-  // v0.8.3: внутрішнє дерево 12 ШР — Управління / 1 ШВ / 2 ШВ / 3 ШВ /
-  // Розпорядження. Будується з positionIndex людей (Г03001..Г03113) +
-  // currentSubdivision='розпорядження' для 5-го взводу.
+  // v0.8.3+v0.9.2: внутрішнє дерево 12 ШР — Управління / 1 ШВ / 2 ШВ / 3 ШВ /
+  // Розпорядження / Виключені. Будується з positionIndex (Г03001..Г03113) +
+  // currentSubdivision='розпорядження' для 5-го + status='excluded' для 6-го.
   const root = useMemo(() => buildCompanyTree(personnel), [personnel])
 
   const children = root.children

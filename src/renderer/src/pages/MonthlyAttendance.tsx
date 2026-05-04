@@ -1,6 +1,12 @@
 import { useState } from 'react'
-import { DatePicker, Spin, message } from 'antd'
-import { CameraOutlined, DownloadOutlined } from '@ant-design/icons'
+import { DatePicker, Spin, message, Modal, Checkbox, Tooltip, Dropdown } from 'antd'
+import {
+  CameraOutlined,
+  DownloadOutlined,
+  CopyOutlined,
+  HistoryOutlined,
+  DownOutlined
+} from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { useMonthlyAttendance } from '../hooks/useAttendance'
 import { useAppStore } from '../stores/app.store'
@@ -36,8 +42,65 @@ export default function MonthlyAttendance(): JSX.Element {
   const [year, setYear] = useState(today.year())
   const [month, setMonth] = useState(today.month() + 1)
   const [snapshotLoading, setSnapshotLoading] = useState(false)
+  const [copyLoading, setCopyLoading] = useState(false)
+  const [copyModalOpen, setCopyModalOpen] = useState(false)
+  const [copySrc, setCopySrc] = useState<dayjs.Dayjs>(today.subtract(1, 'day'))
+  const [copyDst, setCopyDst] = useState<dayjs.Dayjs>(today)
+  const [copyOverwrite, setCopyOverwrite] = useState(false)
 
   const { data, loading, refetch } = useMonthlyAttendance(year, month, globalSubdivision)
+
+  const runCopyDay = async (src: dayjs.Dayjs, dst: dayjs.Dayjs, overwrite: boolean) => {
+    setCopyLoading(true)
+    try {
+      const res = await window.api.attendanceCopyDay(
+        src.format('YYYY-MM-DD'),
+        dst.format('YYYY-MM-DD'),
+        overwrite
+      )
+      if (res.srcCount === 0) {
+        message.warning(`За ${src.format('DD.MM.YYYY')} немає позначок для копіювання`)
+      } else {
+        const skipped = res.skipped > 0 ? `, пропущено ${res.skipped}` : ''
+        message.success(`Скопійовано ${res.copied} з ${res.srcCount}${skipped}`)
+        refetch()
+      }
+    } catch (err) {
+      message.error(`Помилка: ${err}`)
+    } finally {
+      setCopyLoading(false)
+    }
+  }
+
+  const handleQuickCopyYesterday = async () => {
+    const dst = today
+    const src = today.subtract(1, 'day')
+    Modal.confirm({
+      title: 'Заповнити сьогодні як учора?',
+      content: (
+        <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+          Будуть скопійовані позначки з{' '}
+          <b>{src.format('DD.MM.YYYY')}</b> на <b>{dst.format('DD.MM.YYYY')}</b>.
+          <br />
+          <span style={{ color: 'var(--fg-3)', fontSize: 12 }}>
+            Існуючі позначки сьогодні буде збережено (не перезаписано).
+          </span>
+        </div>
+      ),
+      okText: 'Скопіювати',
+      cancelText: 'Скасувати',
+      onOk: () => runCopyDay(src, dst, false)
+    })
+  }
+
+  const handleSubmitCopyModal = async () => {
+    if (copySrc.isSame(copyDst, 'day')) {
+      message.warning('Дати джерела і призначення збігаються')
+      return
+    }
+    await runCopyDay(copySrc, copyDst, copyOverwrite)
+    setCopyModalOpen(false)
+  }
 
   const handleMonthChange = (value: dayjs.Dayjs | null): void => {
     if (value) {
@@ -109,6 +172,32 @@ export default function MonthlyAttendance(): JSX.Element {
             format="MMMM YYYY"
             size="small"
           />
+          <Tooltip title="Скопіювати позначки за вчора на сьогодні">
+            <Dropdown.Button
+              type="default"
+              loading={copyLoading}
+              onClick={handleQuickCopyYesterday}
+              menu={{
+                items: [
+                  {
+                    key: 'custom',
+                    icon: <HistoryOutlined />,
+                    label: 'Скопіювати інший день…',
+                    onClick: () => {
+                      setCopySrc(today.subtract(1, 'day'))
+                      setCopyDst(today)
+                      setCopyOverwrite(false)
+                      setCopyModalOpen(true)
+                    }
+                  }
+                ]
+              }}
+              icon={<DownOutlined />}
+            >
+              <CopyOutlined />
+              Як учора
+            </Dropdown.Button>
+          </Tooltip>
           <button className="btn">
             <DownloadOutlined />
             Експорт
@@ -119,6 +208,54 @@ export default function MonthlyAttendance(): JSX.Element {
           </button>
         </div>
       </div>
+
+      <Modal
+        title="Скопіювати позначки на інший день"
+        open={copyModalOpen}
+        onOk={handleSubmitCopyModal}
+        onCancel={() => setCopyModalOpen(false)}
+        okText="Скопіювати"
+        cancelText="Скасувати"
+        confirmLoading={copyLoading}
+        width={460}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 8 }}>
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 4 }}>
+              джерело — звідки копіювати
+            </div>
+            <DatePicker
+              value={copySrc}
+              onChange={(d) => d && setCopySrc(d)}
+              format="DD.MM.YYYY"
+              allowClear={false}
+              style={{ width: '100%' }}
+            />
+          </div>
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 4 }}>
+              призначення — куди вставити
+            </div>
+            <DatePicker
+              value={copyDst}
+              onChange={(d) => d && setCopyDst(d)}
+              format="DD.MM.YYYY"
+              allowClear={false}
+              style={{ width: '100%' }}
+            />
+          </div>
+          <Checkbox
+            checked={copyOverwrite}
+            onChange={(e) => setCopyOverwrite(e.target.checked)}
+          >
+            Перезаписати існуючі позначки на дату призначення
+          </Checkbox>
+          <div style={{ fontSize: 11.5, color: 'var(--fg-3)', lineHeight: 1.4 }}>
+            Копіюються позначки лише для активного особового складу 12 ШР (Г-3).
+            ОС у розпорядженні не зачіпається.
+          </div>
+        </div>
+      </Modal>
 
       {/* Легенда */}
       <div

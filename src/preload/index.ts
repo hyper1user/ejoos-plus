@@ -94,6 +94,11 @@ const api = {
   attendanceSetDay: (personnelId: number, date: string, statusCode: string) =>
     ipcRenderer.invoke(IPC.ATTENDANCE_SET_DAY, personnelId, date, statusCode),
   attendanceSnapshot: (date: string) => ipcRenderer.invoke(IPC.ATTENDANCE_SNAPSHOT, date),
+  attendanceCopyDay: (srcDate: string, dstDate: string, overwrite: boolean) =>
+    ipcRenderer.invoke(IPC.ATTENDANCE_COPY_DAY, srcDate, dstDate, overwrite),
+  attendanceBulkSet: (
+    items: Array<{ personnelId: number; date: string; statusCode: string }>
+  ) => ipcRenderer.invoke(IPC.ATTENDANCE_BULK_SET, items),
 
   // Import
   openFileDialog: (filters?: { name: string; extensions: string[] }[]) =>
