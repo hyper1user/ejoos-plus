@@ -1550,6 +1550,78 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // Bulk-clear: видалити attendance-рядки для діапазону клітинок одною транзакцією.
+  // Симетрично до ATTENDANCE_BULK_SET. Один audit-запис на batch.
+  safeHandle(
+    IPC.ATTENDANCE_BULK_CLEAR,
+    (
+      _event,
+      items: Array<{ personnelId: number; date: string }>
+    ) => {
+      const db = getDatabase()
+
+      if (items.length === 0) return { ok: true, deleted: 0 }
+
+      const today = todayLocalIso()
+
+      const result = db.transaction(() => {
+        let deleted = 0
+        // Якщо за один bulk зачищають кілька рядків today для тієї самої особи —
+        // currentStatusCode достатньо скинути один раз. Збираємо унікальні pid.
+        const todayPids = new Set<number>()
+
+        for (const it of items) {
+          const existing = db
+            .select({ id: attendance.id })
+            .from(attendance)
+            .where(
+              and(
+                eq(attendance.personnelId, it.personnelId),
+                eq(attendance.date, it.date)
+              )
+            )
+            .get()
+          if (existing) {
+            db.delete(attendance).where(eq(attendance.id, existing.id)).run()
+            deleted++
+          }
+          if (it.date === today) {
+            todayPids.add(it.personnelId)
+          }
+        }
+
+        // Скидаємо currentStatusCode для тих, кому очистили today
+        for (const pid of todayPids) {
+          db.update(personnel)
+            .set({
+              currentStatusCode: null,
+              updatedAt: sql`(strftime('%Y-%m-%d %H:%M:%f','now'))`
+            })
+            .where(eq(personnel.id, pid))
+            .run()
+        }
+
+        return { deleted, syncedCurrentStatus: todayPids.size }
+      })
+
+      // Audit log — один запис на batch
+      db.insert(auditLog)
+        .values({
+          tableName: 'attendance',
+          recordId: 0,
+          action: 'bulk-clear',
+          oldValues: JSON.stringify({
+            count: result.deleted,
+            requested: items.length,
+            sample: items.slice(0, 3)
+          })
+        })
+        .run()
+
+      return { ok: true, deleted: result.deleted }
+    }
+  )
+
   // Snapshot: fill attendance for all active personnel from their currentStatusCode
   safeHandle(IPC.ATTENDANCE_SNAPSHOT, (_event, date: string) => {
     const db = getDatabase()

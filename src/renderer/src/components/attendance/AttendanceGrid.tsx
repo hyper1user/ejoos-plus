@@ -45,6 +45,7 @@ interface DayCellProps {
   colorCode: string | null
   isWeekend: boolean
   inDrag: boolean
+  inSelection: boolean
   weekendBg: string
   primaryColor: string
   onMouseDown: (e: React.MouseEvent, cell: CellRef) => void
@@ -60,6 +61,7 @@ const DayCell = memo(function DayCell({
   colorCode,
   isWeekend,
   inDrag,
+  inSelection,
   weekendBg,
   primaryColor,
   onMouseDown,
@@ -81,6 +83,15 @@ const DayCell = memo(function DayCell({
       : isWeekend
         ? { background: weekendBg }
         : {}),
+    // Selection (Shift+drag, чекає Delete) — dashed outline, червонуватий
+    ...(inSelection
+      ? {
+          outline: `1.5px dashed #ff4d4f`,
+          outlineOffset: -1,
+          background: `#ff4d4f1f`
+        }
+      : {}),
+    // Live drag-paint preview — solid outline primary
     ...(inDrag
       ? {
           outline: `1.5px solid ${primaryColor}`,
@@ -168,23 +179,60 @@ export default function AttendanceGrid({
       })
     )
   }
+  // Локально видалити багато клітинок (для bulk-clear)
+  const localClearCells = (items: Array<{ personnelId: number; date: string }>) => {
+    if (items.length === 0) return
+    const byPid = new Map<number, Set<string>>()
+    for (const it of items) {
+      if (!byPid.has(it.personnelId)) byPid.set(it.personnelId, new Set())
+      byPid.get(it.personnelId)!.add(it.date)
+    }
+    setRowsState((prev) =>
+      prev.map((r) => {
+        const dates = byPid.get(r.personnelId)
+        if (!dates) return r
+        const nextDays = { ...r.days }
+        let changed = false
+        for (const d of dates) {
+          if (d in nextDays) {
+            delete nextDays[d]
+            changed = true
+          }
+        }
+        return changed ? { ...r, days: nextDays } : r
+      })
+    )
+  }
 
   // Drag state — НЕ в React state, бо змінюється часто і не повинно тригерити re-render
   // самого Table. Тільки overlay-рамка перерендерюється.
+  // shiftMode: при mousedown з Shift drag працює як «select range», а не fill —
+  // після mouseup замість bulk-set залишаємо `selection`, який чекає на Delete.
   const dragRef = useRef<{
-    pendingSrc: CellRef | null // mousedown зафіксував кандидата, але ще не перейшли в drag mode
+    pendingSrc: CellRef | null
     pendingStart: { x: number; y: number } | null
     active: DragState | null
-    justEnded: boolean // прапорець для onCellClick — щоб не відкривати popover після drag
-  }>({ pendingSrc: null, pendingStart: null, active: null, justEnded: false })
+    justEnded: boolean
+    shiftMode: boolean
+  }>({ pendingSrc: null, pendingStart: null, active: null, justEnded: false, shiftMode: false })
 
-  // Окремий state для preview-рамки — змінюється тільки при перетині нової клітинки
+  // Range preview під час drag (live; зникає на mouseup)
   const [dragRange, setDragRange] = useState<{
     minRow: number
     maxRow: number
     minCol: number
     maxCol: number
     value: string | null
+  } | null>(null)
+
+  // Зафіксований selection-діапазон ПІСЛЯ Shift+drag — чекає на Delete.
+  // Відрізняється від dragRange візуально (інший колір outline) і живе до
+  // явного зняття: Delete (=> bulk-clear), Esc, або наступний клік.
+  const [selection, setSelection] = useState<{
+    minRow: number
+    maxRow: number
+    minCol: number
+    maxCol: number
   } | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -257,6 +305,39 @@ export default function AttendanceGrid({
     [rowsState]
   )
 
+  // Bulk-clear для selection-діапазону (Delete після Shift+drag)
+  const handleBulkClear = useCallback(
+    async (range: { minRow: number; maxRow: number; minCol: number; maxCol: number }) => {
+      const items: Array<{ personnelId: number; date: string }> = []
+      for (let r = range.minRow; r <= range.maxRow; r++) {
+        const row = rowsState[r]
+        if (!row) continue
+        for (let c = range.minCol; c <= range.maxCol; c++) {
+          const day = c + 1
+          const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+          // Фільтруємо одразу — не надсилаємо на бекенд клітинки, що вже порожні
+          if (dateStr in row.days) {
+            items.push({ personnelId: row.personnelId, date: dateStr })
+          }
+        }
+      }
+      if (items.length === 0) return
+      const prevSnapshot = rowsState
+      localClearCells(items)
+      setSaving(true)
+      try {
+        const res = await window.api.attendanceBulkClear(items)
+        message.success(`Очищено ${res.deleted} клітинок`)
+      } catch (err) {
+        setRowsState(prevSnapshot)
+        message.error(`Помилка: ${err}`)
+      } finally {
+        setSaving(false)
+      }
+    },
+    [rowsState, year, month]
+  )
+
   // Bulk apply після drag-fill — optimistic update без refetch
   const handleBulkApply = useCallback(
     async (range: NonNullable<typeof dragRange>) => {
@@ -325,7 +406,9 @@ export default function AttendanceGrid({
         const dx = Math.abs(e.clientX - d.pendingStart.x)
         const dy = Math.abs(e.clientY - d.pendingStart.y)
         if (dx >= DRAG_THRESHOLD_PX || dy >= DRAG_THRESHOLD_PX) {
-          if (d.pendingSrc.value) {
+          // Shift-drag працює навіть з порожньої source-клітинки (це чистий select),
+          // звичайний drag-paint вимагає, щоб у source було значення для копіювання.
+          if (d.shiftMode || d.pendingSrc.value) {
             d.active = { src: d.pendingSrc, current: d.pendingSrc }
             updateRange(d.active)
           }
@@ -347,14 +430,22 @@ export default function AttendanceGrid({
       const d = dragRef.current
       if (d.active && dragRange) {
         const r = computeRange(d.active)
+        const wasShift = d.shiftMode
         d.active = null
+        d.shiftMode = false
         d.justEnded = true
         setDragRange(null)
-        handleBulkApply(r)
+        if (wasShift) {
+          // Shift+drag → залишаємо як selection, чекаємо на Delete
+          setSelection({ minRow: r.minRow, maxRow: r.maxRow, minCol: r.minCol, maxCol: r.maxCol })
+        } else {
+          handleBulkApply(r)
+        }
       } else {
         d.active = null
         d.pendingSrc = null
         d.pendingStart = null
+        d.shiftMode = false
         setDragRange(null)
       }
     }
@@ -367,14 +458,55 @@ export default function AttendanceGrid({
     }
   }, [dragRange, handleBulkApply])
 
+  // Keyboard: Delete/Backspace для очищення editor-клітинки або selection-діапазону.
+  // Esc — знімає selection (editor закриває власний `useEffect` нижче).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Не перехоплювати, якщо фокус у input/textarea/select — щоб користувач
+      // міг шукати в Select списку клавішею Backspace
+      const target = e.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          tag === 'SELECT' ||
+          target.isContentEditable
+        ) {
+          return
+        }
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Пріоритет: editor зі значенням → selection
+        if (editor && editor.value) {
+          e.preventDefault()
+          handleClearDay(editor.personnelId, editor.date)
+          setEditor(null)
+          return
+        }
+        if (selection) {
+          e.preventDefault()
+          handleBulkClear(selection)
+          setSelection(null)
+        }
+      } else if (e.key === 'Escape') {
+        if (selection) setSelection(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [editor, selection, handleClearDay, handleBulkClear])
+
   const onCellMouseDown = useCallback((e: React.MouseEvent, cell: CellRef) => {
     if (e.button !== 0) return
     dragRef.current.pendingSrc = cell
     dragRef.current.pendingStart = { x: e.clientX, y: e.clientY }
+    dragRef.current.shiftMode = e.shiftKey
   }, [])
 
   // Click без drag відкриває редактор. Якщо щойно завершився drag —
-  // не відкривати (justEnded flag).
+  // не відкривати (justEnded flag). Простий клік також знімає selection.
   const onCellClick = useCallback(
     (e: React.MouseEvent, cell: CellRef) => {
       const d = dragRef.current
@@ -382,6 +514,8 @@ export default function AttendanceGrid({
         d.justEnded = false
         return
       }
+      // Простий клік знімає selection (якщо був) — користувач почав щось нове
+      setSelection(null)
       const target = e.currentTarget as HTMLDivElement
       const rect = target.getBoundingClientRect()
       const row = rowsState[cell.rowIdx]
@@ -399,6 +533,17 @@ export default function AttendanceGrid({
       })
     },
     [rowsState]
+  )
+
+  // Перевірити, чи клітинка в зафіксованому selection-діапазоні
+  const isInSelection = useCallback(
+    (rowIdx: number, colIdx: number) =>
+      !!selection &&
+      rowIdx >= selection.minRow &&
+      rowIdx <= selection.maxRow &&
+      colIdx >= selection.minCol &&
+      colIdx <= selection.maxCol,
+    [selection]
   )
 
   const isInDragRange = useCallback(
@@ -471,6 +616,7 @@ export default function AttendanceGrid({
               colorCode={meta?.colorCode ?? null}
               isWeekend={isWeekend}
               inDrag={isInDragRange(rowIdx, i)}
+              inSelection={isInSelection(rowIdx, i)}
               weekendBg={weekendBg}
               primaryColor={primaryColor}
               onMouseDown={onCellMouseDown}
@@ -484,6 +630,7 @@ export default function AttendanceGrid({
     datesInMonth,
     statusMap,
     isInDragRange,
+    isInSelection,
     weekendBg,
     primaryColor,
     onCellMouseDown,
@@ -628,7 +775,7 @@ export default function AttendanceGrid({
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 1000,
-            background: token.colorPrimary,
+            background: dragRef.current.shiftMode ? '#ff4d4f' : token.colorPrimary,
             color: '#fff',
             padding: '4px 12px',
             borderRadius: 999,
@@ -638,7 +785,32 @@ export default function AttendanceGrid({
             pointerEvents: 'none'
           }}
         >
-          {dragRange.value ?? '—'} → {(dragRange.maxRow - dragRange.minRow + 1) * (dragRange.maxCol - dragRange.minCol + 1)} клітинок
+          {dragRef.current.shiftMode
+            ? `Виділено ${(dragRange.maxRow - dragRange.minRow + 1) * (dragRange.maxCol - dragRange.minCol + 1)} клітинок`
+            : `${dragRange.value ?? '—'} → ${(dragRange.maxRow - dragRange.minRow + 1) * (dragRange.maxCol - dragRange.minCol + 1)} клітинок`}
+        </div>
+      )}
+
+      {/* Persistent pill для зафіксованого selection (після Shift+drag, чекає Delete) */}
+      {selection && !dragRange && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 16,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1000,
+            background: '#ff4d4f',
+            color: '#fff',
+            padding: '4px 12px',
+            borderRadius: 999,
+            fontSize: 11,
+            fontFamily: 'var(--font-mono)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+            pointerEvents: 'none'
+          }}
+        >
+          Виділено {(selection.maxRow - selection.minRow + 1) * (selection.maxCol - selection.minCol + 1)} клітинок · Delete = очистити
         </div>
       )}
     </div>

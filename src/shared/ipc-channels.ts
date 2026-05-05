@@ -44,6 +44,7 @@ export const IPC = {
   ATTENDANCE_GET_MONTH: 'attendance:get-month',
   ATTENDANCE_SET_DAY: 'attendance:set-day',
   ATTENDANCE_CLEAR_DAY: 'attendance:clear-day',
+  ATTENDANCE_BULK_CLEAR: 'attendance:bulk-clear',
   ATTENDANCE_SNAPSHOT: 'attendance:snapshot',
   ATTENDANCE_COPY_DAY: 'attendance:copy-day',
   ATTENDANCE_BULK_SET: 'attendance:bulk-set',

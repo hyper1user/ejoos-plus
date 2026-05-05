@@ -95,6 +95,8 @@ const api = {
     ipcRenderer.invoke(IPC.ATTENDANCE_SET_DAY, personnelId, date, statusCode),
   attendanceClearDay: (personnelId: number, date: string) =>
     ipcRenderer.invoke(IPC.ATTENDANCE_CLEAR_DAY, personnelId, date),
+  attendanceBulkClear: (items: Array<{ personnelId: number; date: string }>) =>
+    ipcRenderer.invoke(IPC.ATTENDANCE_BULK_CLEAR, items),
   attendanceSnapshot: (date: string) => ipcRenderer.invoke(IPC.ATTENDANCE_SNAPSHOT, date),
   attendanceCopyDay: (srcDate: string, dstDate: string, overwrite: boolean) =>
     ipcRenderer.invoke(IPC.ATTENDANCE_COPY_DAY, srcDate, dstDate, overwrite),
