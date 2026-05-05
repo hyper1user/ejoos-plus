@@ -192,7 +192,12 @@ export function importEjoos(parsed: ParseResult): ImportResult {
             bloodTypeId,
             fitness: p.fitness,
             additionalInfo: p.additionalInfo,
-            status: p.status
+            status: p.status,
+            // v0.9.3: для імпортованих з аркуша «Виключені» проставляємо
+            // excludedAt — інакше вони впадуть у кінець сортування за датою
+            // виключення (NULLS LAST). Точна дата з ЕЖООС невідома, тож
+            // фіксуємо момент імпорту — це проксі «not earlier than».
+            excludedAt: p.status === 'excluded' ? sql`datetime('now')` : null
           })
           .returning()
           .get()

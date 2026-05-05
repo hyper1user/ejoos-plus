@@ -248,6 +248,7 @@ function createTables(sqliteDb: InstanceType<typeof Database>): void {
       photo_path TEXT,
 
       status TEXT DEFAULT 'active',
+      excluded_at TEXT,
       additional_info TEXT,
       notes TEXT,
 
@@ -526,6 +527,10 @@ function createTables(sqliteDb: InstanceType<typeof Database>): void {
     CREATE INDEX IF NOT EXISTS idx_personnel_status ON personnel(status);
     CREATE INDEX IF NOT EXISTS idx_personnel_position ON personnel(current_position_idx);
     CREATE INDEX IF NOT EXISTS idx_personnel_subdivision ON personnel(current_subdivision);
+    -- v0.9.3: idx_personnel_excluded_at створюється у addExcludedAtColumn(),
+    -- після того як ALTER TABLE додасть колонку excluded_at для старих БД.
+    -- Якщо створити тут — для існуючих інсталяцій SQLite не знайде колонки
+    -- (CREATE TABLE IF NOT EXISTS пропускає таблицю, але CREATE INDEX падає).
     CREATE INDEX IF NOT EXISTS idx_movements_personnel ON movements(personnel_id);
     CREATE INDEX IF NOT EXISTS idx_movements_position ON movements(position_index);
     CREATE INDEX IF NOT EXISTS idx_movements_active ON movements(is_active);
@@ -563,16 +568,39 @@ function createTables(sqliteDb: InstanceType<typeof Database>): void {
   // v0.8.2: синхронізація status_types зі значеннями ЕЖООС.xlsx
   syncStatusTypesFromEjoos(sqliteDb)
 
+  // v0.9.5: ЕЖООС.xlsx використовує `'Виключений'` (дієприкметник), внутрішній
+  // код — `'Виключення'` (іменник, MOVEMENT_ORDER_TYPES enum). До v0.9.5 у БД
+  // лежали обидві форми залежно від джерела, через що fixExcludedFromMovements
+  // та MOVEMENTS_CREATE гілка не зачіпали імпортованих виключених. Нормалізуємо
+  // ДО fixExcludedFromMovements, щоб той підхопив виправлені рядки.
+  normalizeMovementOrderTypes(sqliteDb)
+
   // v0.8.6: для тих, кого раніше виключили через wizard переміщень
   // (orderType='Виключення'), але БД залишила personnel.status='active'
   // через відсутню гілку в MOVEMENTS_CREATE — застосувати правильний стан.
   fixExcludedFromMovements(sqliteDb)
+
+  // v0.9.7: симетричний фікс для 'Відновлення' — гілки в MOVEMENTS_CREATE
+  // не існувало до v0.9.7, тож рух створювався, але status='excluded'
+  // не повертався на 'active'. Викликається ПІСЛЯ fixExcludedFromMovements,
+  // щоб у тих, кого і виключили, і відновили — кінцевий стан був 'active'.
+  fixRestoredFromMovements(sqliteDb)
 
   // v0.8.7: проміжна v0.8.6 nullify-логіка занулила current_subdivision у
   // виключених — через що вони випадали з вкладки «Виключені»
   // (фільтр subdivision='Г-3'). Відновлюємо Г-3 для них (додаток
   // розрахований на одну роту — інших значень бути не може).
   restoreSubdivisionForExcluded(sqliteDb)
+
+  // v0.9.3: окреме поле excluded_at для стабільного сортування виключених
+  // (раніше desc(updatedAt) — «дрейфувало» при правці картки).
+  addExcludedAtColumn(sqliteDb)
+
+  // v0.9.6: enrich excluded_at для існуючих виключених — взяти точну дату
+  // наказу з активного руху 'Виключення' замість updated_at (з v0.9.3 backfill).
+  // Без цього всі імпортовані виключені мали однаковий момент імпорту →
+  // сортування фактично не відрізнялось від попереднього updated_at-based.
+  backfillExcludedAtFromMovements(sqliteDb)
 }
 
 function migratePersonnel(sqliteDb: InstanceType<typeof Database>): void {
@@ -712,15 +740,45 @@ function syncStatusTypesFromEjoos(sqliteDb: InstanceType<typeof Database>): void
   }
 }
 
+// v0.9.5: ЕЖООС.xlsx → 'Виключений', код → 'Виключення'. Приводимо існуючі
+// рядки в movements до канонічної форми. Парсер (ejoos-parser.ts) уже робить
+// це для нових імпортів — ця міграція ловить рядки, що вже лежать у БД.
+function normalizeMovementOrderTypes(sqliteDb: InstanceType<typeof Database>): void {
+  sqliteDb.exec(`
+    UPDATE movements SET order_type = 'Виключення'
+    WHERE order_type = 'Виключений'
+  `)
+  const changes = sqliteDb.prepare('SELECT changes() as cnt').get() as { cnt: number }
+  if (changes.cnt > 0) {
+    console.log(`[db] normalizeMovementOrderTypes: нормалізовано ${changes.cnt} рухів 'Виключений' → 'Виключення'`)
+  }
+}
+
 // v0.8.6: до v0.8.6 wizard переміщень з orderType='Виключення' створював
 // рядок у movements, але не міняв personnel.status — особа залишалась
 // active зі старою посадою/підрозділом/статусом. v0.8.7: ставимо лише
 // status='excluded' (consistent з PERSONNEL_DELETE), залишаючи поля
-// `current_*` як «останній відомий стан» — інакше особа випадає з UI
-// вкладки «Виключені» (фільтр там за subdivision='Г-3').
+// `current_*` як «останній відомий стан».
+//
+// v0.9.5: одночасно виставляємо excluded_at = order_date з активного руху
+// 'Виключення'. Без цього новi виключені (масив після normalizeMovementOrderTypes)
+// отримали б excluded_at = updated_at через v0.9.3 backfill — а updated_at у
+// них = момент імпорту (всі однакові), тож сортування за датою виключення
+// було б випадковим. Беремо order_date з руху — точна дата наказу.
 function fixExcludedFromMovements(sqliteDb: InstanceType<typeof Database>): void {
   sqliteDb.exec(`
-    UPDATE personnel SET status = 'excluded'
+    UPDATE personnel SET
+      status = 'excluded',
+      excluded_at = COALESCE(
+        (SELECT m.order_date FROM movements m
+         WHERE m.personnel_id = personnel.id
+           AND m.order_type = 'Виключення'
+           AND m.is_active = 1
+         ORDER BY m.order_date DESC
+         LIMIT 1),
+        excluded_at,
+        datetime('now')
+      )
     WHERE id IN (
       SELECT m.personnel_id FROM movements m
       WHERE m.is_active = 1 AND m.order_type = 'Виключення'
@@ -730,6 +788,35 @@ function fixExcludedFromMovements(sqliteDb: InstanceType<typeof Database>): void
   const changes = sqliteDb.prepare('SELECT changes() as cnt').get() as { cnt: number }
   if (changes.cnt > 0) {
     console.log(`[db] fixExcludedFromMovements: виключено ${changes.cnt} записів`)
+  }
+}
+
+// v0.9.7: до v0.9.7 у MOVEMENTS_CREATE не було гілки для orderType='Відновлення'
+// (дзеркальний баг до v0.8.6 з 'Виключення'). Користувач створював рух
+// «Відновлення» через wizard, рядок з'являвся в movements, але personnel.status
+// залишався 'excluded'. Тут одноразово приводимо до правильного стану.
+//
+// Інваріант v0.9.3: status='active' ⇒ excluded_at IS NULL. Тож у UPDATE
+// одночасно зануляємо excluded_at.
+//
+// current_subdivision/currentPositionIdx НЕ чіпаємо — вони залишаються як
+// «останній відомий стан» з періоду до виключення. Для Бачуріна, наприклад,
+// current_subdivision='Г-3' уже стояло (через v0.8.7 restoreSubdivisionForExcluded).
+function fixRestoredFromMovements(sqliteDb: InstanceType<typeof Database>): void {
+  sqliteDb.exec(`
+    UPDATE personnel SET
+      status = 'active',
+      excluded_at = NULL,
+      updated_at = datetime('now')
+    WHERE id IN (
+      SELECT m.personnel_id FROM movements m
+      WHERE m.is_active = 1 AND m.order_type = 'Відновлення'
+    )
+    AND status = 'excluded'
+  `)
+  const changes = sqliteDb.prepare('SELECT changes() as cnt').get() as { cnt: number }
+  if (changes.cnt > 0) {
+    console.log(`[db] fixRestoredFromMovements: відновлено ${changes.cnt} записів`)
   }
 }
 
@@ -744,5 +831,85 @@ function restoreSubdivisionForExcluded(sqliteDb: InstanceType<typeof Database>):
   const changes = sqliteDb.prepare('SELECT changes() as cnt').get() as { cnt: number }
   if (changes.cnt > 0) {
     console.log(`[db] restoreSubdivisionForExcluded: відновлено ${changes.cnt} записів`)
+  }
+}
+
+// v0.9.3: до v0.9.3 виключені сортувались за personnel.updated_at — будь-яка
+// правка картки (фото, телефон, нотатка) піднімала особу вгору списку
+// (edge-case з нотатки v0.8.8). Окреме поле excluded_at стабільне:
+// встановлюється раз у момент виключення (PERSONNEL_DELETE / MOVEMENTS_CREATE
+// при orderType='Виключення'), занулюється при відновленні
+// (PERSONNEL_UPDATE при status='active'). Інваріант:
+// excluded_at IS NOT NULL ⇔ status='excluded'.
+//
+// Backfill: для існуючих excluded ставимо excluded_at = updated_at —
+// найкращий проксі за нотаткою v0.8.8 («у 99% випадків це фактичний
+// момент виключення»). Точніше відновити неможливо без сканування
+// movements/audit_log.
+// v0.9.6: для виключених з активним рухом 'Виключення' переписуємо excluded_at
+// на m.order_date — це точна дата наказу. До v0.9.6 v0.9.3 backfill ставив
+// updated_at (момент імпорту/правки), що для імпортованих з ЕЖООС давало
+// одну дату всім → у сортуванні `desc(excluded_at)` всі сидять купою з
+// secondary asc(fullName).
+//
+// Idempotent: на повторних викликах SUBQUERY поверне ту саму order_date,
+// UPDATE буде self-equal → no-op (фактично, але `changes()` все одно
+// рахує проходи).
+//
+// Не зачіпає виключених через PERSONNEL_DELETE без створення руху (там
+// SUBQUERY поверне NULL → IN-список не зачепить запис, excluded_at з
+// datetime('now') збережеться).
+function backfillExcludedAtFromMovements(sqliteDb: InstanceType<typeof Database>): void {
+  sqliteDb.exec(`
+    UPDATE personnel
+    SET excluded_at = (
+      SELECT m.order_date FROM movements m
+      WHERE m.personnel_id = personnel.id
+        AND m.order_type = 'Виключення'
+        AND m.is_active = 1
+        AND m.order_date IS NOT NULL
+      ORDER BY m.order_date DESC, m.id DESC
+      LIMIT 1
+    )
+    WHERE status = 'excluded'
+      AND id IN (
+        SELECT m.personnel_id FROM movements m
+        WHERE m.order_type = 'Виключення'
+          AND m.is_active = 1
+          AND m.order_date IS NOT NULL
+      )
+  `)
+  const changes = sqliteDb.prepare('SELECT changes() as cnt').get() as { cnt: number }
+  if (changes.cnt > 0) {
+    console.log(`[db] backfillExcludedAtFromMovements: уточнено excluded_at для ${changes.cnt} виключених`)
+  }
+}
+
+function addExcludedAtColumn(sqliteDb: InstanceType<typeof Database>): void {
+  const cols = sqliteDb.prepare('PRAGMA table_info(personnel)').all() as { name: string }[]
+  const hasColumn = cols.some((c) => c.name === 'excluded_at')
+
+  // 1. Колонка — тільки для старих БД (нові вже мають її з createTables)
+  if (!hasColumn) {
+    sqliteDb.exec('ALTER TABLE personnel ADD COLUMN excluded_at TEXT')
+    console.log('[db] addExcludedAtColumn: додано колонку excluded_at')
+  }
+
+  // 2. Індекс — створюємо завжди (ідемпотентно). У createTables ми НЕ
+  //    створюємо цей індекс, бо CREATE INDEX падає на існуючих БД до того,
+  //    як ALTER TABLE встигне додати колонку.
+  sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_personnel_excluded_at ON personnel(excluded_at)')
+
+  // 3. Backfill — idempotent (WHERE excluded_at IS NULL).
+  //    Для нових БД нічого не зробить (нема excluded). Для старих —
+  //    проставить excluded_at = updated_at для всіх існуючих виключених.
+  sqliteDb.exec(`
+    UPDATE personnel
+    SET excluded_at = updated_at
+    WHERE status = 'excluded' AND excluded_at IS NULL
+  `)
+  const changes = sqliteDb.prepare('SELECT changes() as cnt').get() as { cnt: number }
+  if (changes.cnt > 0) {
+    console.log(`[db] addExcludedAtColumn: backfill для ${changes.cnt} виключених`)
   }
 }

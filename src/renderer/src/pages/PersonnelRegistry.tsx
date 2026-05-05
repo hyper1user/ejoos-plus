@@ -94,13 +94,18 @@ export default function PersonnelRegistry(): JSX.Element {
     setPage(1)
   }
 
+  // v0.9.4: для platoon=Г-3.5 (Розпорядження) НЕ передаємо subdivision у backend.
+  // Розпорядженни мають `currentSubdivision='розпорядження'` (не 'Г-3'), тож
+  // фільтр subdivision='Г-3' відсіював би їх ще до клієнтського getPlatoonCodeForPerson.
+  // Решта platoons (Г-3.1..Г-3.4) — це ОС зі штатними посадами, у них
+  // currentSubdivision='Г-3', тож відсутність фільтру нічого не змінить.
   const filters = useMemo(
     () => ({
       search: search || undefined,
-      subdivision: globalSubdivision,
+      subdivision: platoonFilter === 'Г-3.5' ? undefined : globalSubdivision,
       status: 'active',
     }),
-    [search, globalSubdivision]
+    [search, globalSubdivision, platoonFilter]
   )
 
   const { data, loading, refetch } = usePersonnelList(filters)

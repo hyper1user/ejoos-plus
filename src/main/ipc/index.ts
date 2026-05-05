@@ -128,11 +128,12 @@ export function registerIpcHandlers(): void {
       }
 
       // v0.8.8: для вкладки «Виключені» сортуємо за датою виключення
-      // (новіші вгорі) — `updatedAt` оновлюється і в PERSONNEL_DELETE,
-      // і в MOVEMENTS_CREATE при `orderType='Виключення'`. Решта запитів —
-      // штатне сортування з v0.8.4 (за currentPositionIdx).
+      // (новіші вгорі). v0.9.3: перейшли з desc(updatedAt) на desc(excludedAt) —
+      // окреме поле, що НЕ змінюється при правці картки виключеного
+      // (фото, телефон тощо). Решта запитів — штатне сортування з v0.8.4
+      // (за currentPositionIdx).
       const primarySort = statusFilter === 'excluded'
-        ? desc(personnel.updatedAt)
+        ? desc(personnel.excludedAt)
         : asc(personnel.currentPositionIdx)
 
       const result = db
@@ -314,6 +315,16 @@ export function registerIpcHandlers(): void {
       // Get old values for audit
       const oldRow = db.select().from(personnel).where(eq(personnel.id, id)).get()
 
+      // v0.9.3: підтримуємо інваріант excluded_at IS NOT NULL ⇔ status='excluded'.
+      // Restore (status: excluded → active, напр. ExcludedPersonnel handleRestore) —
+      // занулюємо excludedAt, інакше при повторному виключенні відображалась би
+      // стара дата. Зворотний перехід (active → excluded) тут не обробляємо:
+      // виключення йде через PERSONNEL_DELETE або MOVEMENTS_CREATE, які
+      // ставлять excludedAt напряму.
+      if (input.status === 'active' && oldRow?.status === 'excluded') {
+        updates.excludedAt = null
+      }
+
       db.update(personnel)
         .set(updates as Partial<typeof personnel.$inferInsert>)
         .where(eq(personnel.id, id))
@@ -338,8 +349,14 @@ export function registerIpcHandlers(): void {
   safeHandle(IPC.PERSONNEL_DELETE, (_event, id: number) => {
     const db = getDatabase()
 
+    // v0.9.3: окреме поле excludedAt для стабільного сортування виключених
+    // (раніше desc(updatedAt), яке «дрейфувало» при правці картки).
     db.update(personnel)
-      .set({ status: 'excluded', updatedAt: sql`datetime('now')` })
+      .set({
+        status: 'excluded',
+        excludedAt: sql`datetime('now')`,
+        updatedAt: sql`datetime('now')`
+      })
       .where(eq(personnel.id, id))
       .run()
 
@@ -975,6 +992,15 @@ export function registerIpcHandlers(): void {
           updatedAt: sql`datetime('now')`
         }
 
+        // v0.9.7: 'Відновлення' — повернення з виключення. Status має змінитися
+        // незалежно від наявності positionIndex (бо сценарій може бути «повернути
+        // в розпорядження» БЕЗ конкретної посади). Виносимо тут, а гілки нижче
+        // лише доуточнюють current_position_idx/Subdivision.
+        if (input.orderType === 'Відновлення') {
+          personnelUpdates.status = 'active'
+          personnelUpdates.excludedAt = null
+        }
+
         if (input.positionIndex) {
           personnelUpdates.currentPositionIdx = input.positionIndex
 
@@ -1008,7 +1034,15 @@ export function registerIpcHandlers(): void {
           //    → знаходить виключеного (тому НЕ обнуляємо currentSubdivision)
           //  - currentPositionIdx/Subdivision/StatusCode залишаємо як «останній
           //    відомий стан» — для аудиту та довідки на картці виключеного
+          // v0.9.3: проставляємо excludedAt для стабільного сортування у вкладці.
           personnelUpdates.status = 'excluded'
+          personnelUpdates.excludedAt = sql`datetime('now')`
+        } else if (input.orderType === 'Відновлення') {
+          // v0.9.7: positionIndex не вказано → повертаємо в роту без штатної
+          // посади (як після «В розпорядження»). Status='active' уже виставлено
+          // вище, тут лише налаштовуємо позицію/підрозділ.
+          personnelUpdates.currentPositionIdx = 'розпоряджен'
+          personnelUpdates.currentSubdivision = 'розпорядження'
         }
 
         db.update(personnel)

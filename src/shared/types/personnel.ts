@@ -66,6 +66,7 @@ export interface Personnel {
   photoPath: string | null
 
   status: 'active' | 'excluded' | 'disposed'
+  excludedAt: string | null
   additionalInfo: string | null
   notes: string | null
 

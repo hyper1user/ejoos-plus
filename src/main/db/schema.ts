@@ -174,6 +174,7 @@ export const personnel = sqliteTable(
     photoPath: text('photo_path'),
 
     status: text('status').default('active'),
+    excludedAt: text('excluded_at'),
     additionalInfo: text('additional_info'),
     notes: text('notes'),
 
@@ -227,7 +228,8 @@ export const personnel = sqliteTable(
     uniqueIndex('idx_personnel_ipn').on(table.ipn),
     index('idx_personnel_status').on(table.status),
     index('idx_personnel_position').on(table.currentPositionIdx),
-    index('idx_personnel_subdivision').on(table.currentSubdivision)
+    index('idx_personnel_subdivision').on(table.currentSubdivision),
+    index('idx_personnel_excluded_at').on(table.excludedAt)
   ]
 )
 

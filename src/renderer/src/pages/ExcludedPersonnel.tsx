@@ -5,21 +5,24 @@ import { ProTable, type ProColumns } from '@ant-design/pro-components'
 import type { PersonnelListItem } from '@shared/types/personnel'
 import RankBadge from '../components/personnel/RankBadge'
 import { usePersonnelList } from '../hooks/usePersonnel'
-import { useAppStore } from '../stores/app.store'
 import { useState, useMemo } from 'react'
 
 export default function ExcludedPersonnel() {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
-  const globalSubdivision = useAppStore((s) => s.globalSubdivision)
 
+  // v0.9.4: фільтр subdivision='Г-3' прибрано. До v0.9.4 виключені, у яких
+  // currentSubdivision != 'Г-3' (наприклад, виключення відбулось коли особа
+  // була у розпорядженні — `currentSubdivision='розпорядження'`), не
+  // показувались. Міграція `restoreSubdivisionForExcluded()` (v0.8.7) рятувала
+  // лише NULL-кейс. Додаток для одного підрозділу — фільтр `status='excluded'`
+  // достатній.
   const filters = useMemo(
     () => ({
       search: search || undefined,
-      subdivision: globalSubdivision,
       status: 'excluded'
     }),
-    [search, globalSubdivision]
+    [search]
   )
 
   const { data, loading, refetch } = usePersonnelList(filters)

@@ -196,11 +196,18 @@ function parseMovements(wb: XLSX.WorkBook): { data: ParsedMovement[]; errors: Pa
     const ipn = cellStr(row, 5)
     if (!ipn) continue // skip empty rows
 
-    const orderType = cellStr(row, 4)
-    if (!orderType) {
+    const orderTypeRaw = cellStr(row, 4)
+    if (!orderTypeRaw) {
       errors.push({ row: i + 1, sheet: sheetName, field: 'orderType', message: `Відсутній тип наказу, ІПН: ${ipn}`, severity: 'warning' })
       continue
     }
+    // v0.9.5: ЕЖООС.xlsx використовує `'Виключений'` (дієприкметник минулого
+    // часу), а вся внутрішня логіка (fixExcludedFromMovements, MOVEMENTS_CREATE
+    // гілка, MovementTimeline кольоровий мап) очікує канонічну форму
+    // `'Виключення'` (іменник, як у MOVEMENT_ORDER_TYPES enum). Приводимо до
+    // канонічної форми тут — щоб у `movements` лежало одне значення з якого
+    // б джерела не прийшло.
+    const orderType = orderTypeRaw === 'Виключений' ? 'Виключення' : orderTypeRaw
 
     const dateFrom = cellDate(row, 10)
     if (!dateFrom) {
