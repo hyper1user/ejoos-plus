@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext, useMemo } from 'react'
-import { Layout, Menu, Tooltip, Input } from 'antd'
+import { Layout, Menu, Tooltip } from 'antd'
 import type { MenuProps } from 'antd'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
@@ -33,6 +33,7 @@ import {
 } from '@ant-design/icons'
 import { ThemeContext } from '../../main'
 import dayjs from 'dayjs'
+import QuickSearch from './QuickSearch'
 import AppRoutes from '../../routes'
 import BrandMark from './BrandMark'
 
@@ -97,8 +98,26 @@ export default function AppLayout(): JSX.Element {
   const [dbStatus, setDbStatus] = useState<string>('')
   const [appVersion, setAppVersion] = useState<string>('')
   const [personnelCount, setPersonnelCount] = useState<number>(0)
+  const [quickSearchOpen, setQuickSearchOpen] = useState(false)
   const { mode, toggle: toggleTheme } = useContext(ThemeContext)
   const isDark = mode === 'dark'
+
+  // ⌘K / Ctrl+K — глобальний шорткат для quick search.
+  // Використовуємо `e.code === 'KeyK'` (фізична клавіша) замість `e.key`,
+  // бо `e.key` повертає друкований символ з урахуванням розкладки —
+  // на українській розкладці клавіша K дає 'л', тож перевірка по key
+  // не спрацьовує. `code` працює незалежно від розкладки і регістру.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.isComposing) return
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK') {
+        e.preventDefault()
+        setQuickSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     window.api.dbHealth().then((r: { ok: boolean; message: string }) => {
@@ -192,6 +211,7 @@ export default function AppLayout(): JSX.Element {
   const sidebarWidth = collapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_W
 
   return (
+    <>
     <Layout style={{ minHeight: '100vh' }}>
       <Sider
         collapsed={collapsed}
@@ -363,8 +383,9 @@ export default function AppLayout(): JSX.Element {
 
           <div style={{ flex: 1 }} />
 
-          {/* Search */}
-          <div
+          {/* Search trigger — клік чи Ctrl+K відкривають QuickSearch overlay */}
+          <button
+            onClick={() => setQuickSearchOpen(true)}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -376,17 +397,19 @@ export default function AppLayout(): JSX.Element {
               width: 280,
               height: 28,
               color: 'var(--fg-2)',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: 12,
+              textAlign: 'left',
             }}
+            title="Швидкий пошук (Ctrl+K)"
           >
             <SearchOutlined style={{ fontSize: 13 }} />
-            <Input
-              placeholder="Пошук позивного, ПІБ, посади…"
-              variant="borderless"
-              size="small"
-              style={{ padding: 0, fontSize: 12, color: 'var(--fg-1)', flex: 1 }}
-            />
+            <span style={{ flex: 1, color: 'var(--fg-3)' }}>
+              Пошук позивного, ПІБ, ІПН…
+            </span>
             <span className="kbd">⌘K</span>
-          </div>
+          </button>
 
           {/* Actions */}
           <Tooltip title="Сповіщення">
@@ -453,5 +476,7 @@ export default function AppLayout(): JSX.Element {
         </Content>
       </Layout>
     </Layout>
+    <QuickSearch open={quickSearchOpen} onClose={() => setQuickSearchOpen(false)} />
+    </>
   )
 }

@@ -376,9 +376,14 @@ export function registerIpcHandlers(): void {
   // Personnel search (alias — uses same logic as list with search filter)
   safeHandle(IPC.PERSONNEL_SEARCH, (_event, query: string) => {
     const db = getDatabase()
-    const pattern = `%${query}%`
+    const q = (query ?? '').toLowerCase().trim()
+    if (!q) return []
 
-    const result = db
+    // Тягнемо всіх активних і фільтруємо в JS — SQLite default-зборка без ICU
+    // має ASCII-only LOWER()/LIKE, тож для української `LIKE '%бачурін%'` не
+    // знайде 'Бачурін'. JS toLowerCase коректно обробляє кирилицю.
+    // 140 рядків — мить навіть на найслабшій машині.
+    const allActive = db
       .select({
         id: personnel.id,
         ipn: personnel.ipn,
@@ -394,20 +399,16 @@ export function registerIpcHandlers(): void {
       })
       .from(personnel)
       .leftJoin(ranks, eq(personnel.rankId, ranks.id))
-      .where(
-        and(
-          eq(personnel.status, 'active'),
-          or(
-            like(personnel.fullName, pattern),
-            like(personnel.ipn, pattern),
-            like(personnel.callsign, pattern)
-          )
-        )
-      )
+      .where(eq(personnel.status, 'active'))
       .orderBy(asc(personnel.currentPositionIdx), asc(personnel.fullName))
       .all()
 
-    return result
+    return allActive.filter((p) => {
+      const fullName = (p.fullName ?? '').toLowerCase()
+      const ipn = (p.ipn ?? '').toLowerCase()
+      const callsign = (p.callsign ?? '').toLowerCase()
+      return fullName.includes(q) || ipn.includes(q) || callsign.includes(q)
+    })
   })
 
   // ==================== POSITIONS CRUD ====================

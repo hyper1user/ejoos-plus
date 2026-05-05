@@ -721,6 +721,23 @@ html[data-theme="light"] .pill.warn    { color: oklch(0.45 0.13 70); }
 .k-card:hover { border-color: var(--line-3); }
 .k-card:active { cursor: grabbing; }
 .k-card.dragging { opacity: 0.4; }
+.k-card.disposition {
+  border-left: 3px solid var(--warn);
+  padding-left: 8px;
+}
+.k-card .disposition-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--warn) 18%, transparent);
+  color: var(--warn);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
 .k-card .row { display: flex; align-items: center; gap: 8px; }
 .k-card .name {
   font-weight: 600;

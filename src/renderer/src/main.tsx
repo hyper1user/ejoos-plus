@@ -1,3 +1,6 @@
+// Antd v5 + React 19 compat shim — мостить старий unmount API.
+// Має бути ПЕРШИМ імпортом, до самого `antd`.
+import '@ant-design/v5-patch-for-react-19'
 import { createContext } from 'react'
 import ReactDOM from 'react-dom/client'
 import { ConfigProvider, App as AntApp, theme as antTheme } from 'antd'
